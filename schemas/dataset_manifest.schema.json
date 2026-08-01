@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/dataset_manifest.schema.json",
+  "title": "PARC2026 Dataset Manifest",
+  "type": "object",
+  "required": [
+    "dataset_id",
+    "source",
+    "license",
+    "generation_method",
+    "task_count",
+    "episode_count",
+    "allowed_for_training",
+    "contains_official_evaluation_data"
+  ],
+  "properties": {
+    "dataset_id": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "minLength": 1},
+    "source_uri": {"type": "string"},
+    "revision": {"type": "string"},
+    "license": {"type": "string", "minLength": 1},
+    "generation_method": {
+      "type": "string",
+      "enum": [
+        "public_dataset",
+        "simulator_scripted_policy",
+        "teleoperation",
+        "data_augmentation",
+        "generated_model",
+        "mixed"
+      ]
+    },
+    "task_count": {"type": "integer", "minimum": 0},
+    "episode_count": {"type": "integer", "minimum": 0},
+    "allowed_for_training": {"type": "boolean"},
+    "contains_official_evaluation_data": {"const": false},
+    "sha256": {"type": "string"},
+    "notes": {"type": "string"}
+  },
+  "additionalProperties": true
+}
