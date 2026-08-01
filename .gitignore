@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+build/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Official repository working copy
+vendor/
+
+# Models and large data
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.zip
+*.tar
+*.tar.gz
+*.parquet
+*.mp4
+*.avi
+model_weights/
+checkpoints/
+datasets/
+artifacts/
+results/
+
+# Local secrets and paths
+.env
+.env.*
+!.env.example
+local_config.yaml
