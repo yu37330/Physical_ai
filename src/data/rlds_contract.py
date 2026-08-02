@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -25,10 +25,41 @@ class EpisodeContractResult:
 
 
 def _as_array(value: Any, *, name: str) -> np.ndarray:
+    if hasattr(value, "detach"):
+        value = value.detach().cpu().numpy()
     array = np.asarray(value)
     if array.size == 0:
         raise ValueError(f"{name} is empty")
     return array
+
+
+def _tensor_tree_summary(value: Any, *, name: str) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        if not value:
+            raise ValueError(f"{name} mapping is empty")
+        return {
+            "kind": "mapping",
+            "children": {
+                str(key): _tensor_tree_summary(child, name=f"{name}.{key}")
+                for key, child in value.items()
+            },
+        }
+    if isinstance(value, (list, tuple)):
+        if not value:
+            raise ValueError(f"{name} sequence is empty")
+        return {
+            "kind": "sequence",
+            "children": [
+                _tensor_tree_summary(child, name=f"{name}[{index}]")
+                for index, child in enumerate(value)
+            ],
+        }
+    array = _as_array(value, name=name)
+    if array.ndim < 3:
+        raise ValueError(f"Expected image tensor with at least 3 dimensions for {name}, got {array.shape}")
+    if not np.isfinite(array).all():
+        raise ValueError(f"{name} contains NaN or Inf")
+    return {"kind": "tensor", "shape": list(array.shape), "dtype": str(array.dtype)}
 
 
 def validate_episode_arrays(
@@ -117,13 +148,20 @@ def build_rlds_steps(
 
 
 def validate_batch_contract(batch: Mapping[str, Any]) -> dict[str, Any]:
-    required = {"pixel_values", "input_ids", "labels", "actions", "proprio"}
+    required = {
+        "pixel_values",
+        "pixel_values_wrist",
+        "input_ids",
+        "labels",
+        "actions",
+        "proprio",
+    }
     missing = sorted(required.difference(batch))
     if missing:
         raise KeyError(f"RLDSBatchTransform output is missing: {missing}")
 
-    actions = np.asarray(batch["actions"])
-    proprio = np.asarray(batch["proprio"])
+    actions = _as_array(batch["actions"], name="actions")
+    proprio = _as_array(batch["proprio"], name="proprio")
     if actions.shape[-2:] != (ACTION_CHUNK_LENGTH, ACTION_DIM):
         raise ValueError(
             f"Expected action chunk (..., {ACTION_CHUNK_LENGTH}, {ACTION_DIM}), got {actions.shape}"
@@ -133,14 +171,13 @@ def validate_batch_contract(batch: Mapping[str, Any]) -> dict[str, Any]:
     if not np.isfinite(actions).all() or not np.isfinite(proprio).all():
         raise ValueError("Transformed actions/proprio contain NaN or Inf")
 
-    pixel_values = np.asarray(batch["pixel_values"])
-    if pixel_values.ndim not in (4, 5):
-        raise ValueError(f"Unexpected pixel_values shape: {pixel_values.shape}")
-
     return {
-        "pixel_values_shape": list(pixel_values.shape),
-        "input_ids_shape": list(np.asarray(batch["input_ids"]).shape),
-        "labels_shape": list(np.asarray(batch["labels"]).shape),
+        "front_pixel_values": _tensor_tree_summary(batch["pixel_values"], name="pixel_values"),
+        "wrist_pixel_values": _tensor_tree_summary(
+            batch["pixel_values_wrist"], name="pixel_values_wrist"
+        ),
+        "input_ids_shape": list(_as_array(batch["input_ids"], name="input_ids").shape),
+        "labels_shape": list(_as_array(batch["labels"], name="labels").shape),
         "actions_shape": list(actions.shape),
         "proprio_shape": list(proprio.shape),
         "action_min": float(actions.min()),
