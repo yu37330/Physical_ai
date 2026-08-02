@@ -9,10 +9,18 @@ agent:
   max_same_action_repeats: 3
   uncertainty_stop_threshold: 0.65
 policy:
-  provider: mock
+  provider: openvla_oft
   action_dim: 7
   action_chunk_size: 8
   checkpoint_path: 30_models/openvla_oft/current
+replay:
+  mode: offline_autonomous_replay
+  default_max_steps: 5
+  action_mae_threshold: 0.25
+  max_consecutive_mismatches: 3
+  max_repeated_actions: 3
+  stop_on_safety_failure: true
+  causal_simulation: false
 safety:
   max_abs_delta: 0.25
   max_gripper_abs: 1.0
