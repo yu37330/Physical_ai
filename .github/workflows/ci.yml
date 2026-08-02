@@ -72,6 +72,32 @@ jobs:
             tests/test_agent_cockpit.py \
             tests/test_agent_cockpit_data_and_policy.py
 
+  frontend-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements-frontend.txt
+
+      - name: Install frontend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-frontend.txt
+
+      - name: Build Gradio application
+        run: |
+          python - <<'PY'
+          from frontend.gradio_app import build_app
+          app = build_app()
+          assert app is not None
+          print('Gradio Blocks build passed')
+          PY
+
   synthetic-rlds-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 25
