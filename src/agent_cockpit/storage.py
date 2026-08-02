@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+from PIL import Image
+
 
 @dataclass(frozen=True)
 class TraceStore:
-    """Run/Step単位でJSON Traceを永続化する。"""
+    """Run/Step単位でJSON Traceと観測Artifactを永続化する。"""
 
     root: Path
 
@@ -38,14 +42,52 @@ class TraceStore:
         self._write_json(run_dir / "run_manifest.json", payload)
         return run_dir
 
+    def step_dir(self, run_id: str, step_id: int) -> Path:
+        step_dir = self.root / run_id / "steps" / f"step_{step_id:04d}"
+        step_dir.mkdir(parents=True, exist_ok=True)
+        return step_dir
+
+    def copy_artifact(
+        self,
+        run_id: str,
+        step_id: int,
+        source_path: str | Path,
+        artifact_name: str,
+    ) -> Path:
+        """入力画像などをStep配下へコピーしてTraceと一緒に残す。"""
+
+        source = Path(source_path)
+        if not source.is_file():
+            raise FileNotFoundError(f"Artifact not found: {source}")
+        destination = self.step_dir(run_id, step_id) / artifact_name
+        shutil.copy2(source, destination)
+        return destination
+
+    def save_image_array(
+        self,
+        run_id: str,
+        step_id: int,
+        artifact_name: str,
+        image: Any,
+    ) -> Path:
+        """uint8 RGB配列をPNGとしてStep配下へ保存する。"""
+
+        array = np.asarray(image)
+        if array.ndim != 3 or array.shape[-1] != 3:
+            raise ValueError(f"Expected RGB image (H, W, 3), got {array.shape}")
+        if array.dtype != np.uint8:
+            array = np.clip(array, 0, 255).astype(np.uint8)
+        destination = self.step_dir(run_id, step_id) / artifact_name
+        Image.fromarray(array, mode="RGB").save(destination)
+        return destination
+
     def save_step(
         self,
         run_id: str,
         step_id: int,
         payloads: dict[str, dict[str, Any]],
     ) -> Path:
-        step_dir = self.root / run_id / "steps" / f"step_{step_id:04d}"
-        step_dir.mkdir(parents=True, exist_ok=True)
+        step_dir = self.step_dir(run_id, step_id)
         for name, payload in payloads.items():
             self._write_json(step_dir / f"{name}.json", payload)
         self._append_jsonl(
