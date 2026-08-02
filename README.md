@@ -18,6 +18,7 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 - [モデル選定・最小調整方針](docs/MODEL_STRATEGY.md)
 - [OpenVLA-OFT+の依存関係・オフライン推論成立性](docs/OPENVLA_OFFLINE_RUNTIME_ASSESSMENT.md)
 - [オフライン推論・学習環境の次の実行手順](docs/OFFLINE_AND_TRAINING_NEXT_STEPS.md)
+- [学習データ統合レポート](docs/LEARNING_DATA_REPORT.md)
 - [学習データ実体調査・Dataset Manifest設計](docs/DATASET_INVENTORY_AND_MANIFEST.md)
 - [LeRobot→RLDS変換・OpenVLA Batch互換性設計](docs/LEROBOT_TO_RLDS_AND_BATCH_COMPATIBILITY.md)
 - [運営Repo調査結果](docs/OFFICIAL_REPOSITORY_NOTES.md)
