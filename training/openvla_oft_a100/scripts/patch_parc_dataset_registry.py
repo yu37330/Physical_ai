@@ -4,10 +4,12 @@ import argparse
 from pathlib import Path
 
 DATASET_NAME = "parc_libero_plus_selected"
+DATASET_VERSION = "1.0.0"
 MIXTURE_NAME = "parc_stage_a_plus_only"
 CONFIG_MARKER = "PARC2026_SELECTED_LIBERO_CONFIG"
 TRANSFORM_MARKER = "PARC2026_SELECTED_LIBERO_TRANSFORM"
 MIXTURE_MARKER = "PARC2026_SELECTED_LIBERO_MIXTURE"
+LOADER_MARKER = "PARC2026_SELECTED_LIBERO_LOCAL_BUILDER"
 
 
 def _append_once(path: Path, marker: str, block: str) -> None:
@@ -17,25 +19,41 @@ def _append_once(path: Path, marker: str, block: str) -> None:
     path.write_text(text.rstrip() + "\n\n" + block.strip() + "\n", encoding="utf-8")
 
 
+def _patch_loader(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    if LOADER_MARKER in text:
+        return
+    old = "    builder = tfds.builder(name, data_dir=data_dir)\n"
+    new = f'''    # {LOADER_MARKER}\n    if name == "{DATASET_NAME}":\n        builder_dir = tf.io.gfile.join(data_dir, name, "{DATASET_VERSION}")\n        builder = tfds.builder_from_directory(builder_dir)\n    else:\n        builder = tfds.builder(name, data_dir=data_dir)\n'''
+    if old not in text:
+        raise RuntimeError("Could not locate tfds.builder call; pinned OpenVLA-OFT source changed")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
 def patch_openvla_oft(root: Path) -> None:
-    oxe_dir = root / "prismatic/vla/datasets/rlds/oxe"
+    dataset_dir = root / "prismatic/vla/datasets/rlds"
+    oxe_dir = dataset_dir / "oxe"
+    dataset_loader = dataset_dir / "dataset.py"
     configs = oxe_dir / "configs.py"
     transforms = oxe_dir / "transforms.py"
     mixtures = oxe_dir / "mixtures.py"
-    for path in (configs, transforms, mixtures):
+    for path in (dataset_loader, configs, transforms, mixtures):
         if not path.is_file():
             raise FileNotFoundError(f"Pinned OpenVLA-OFT layout not found: {path}")
+
+    _patch_loader(dataset_loader)
 
     _append_once(
         configs,
         CONFIG_MARKER,
         f'''
 # {CONFIG_MARKER}
-# Source TFDS steps already expose image, wrist_image, state, action, and language_instruction.
+# Source TFDS steps expose image, wrist_image, state, action, and language_instruction.
 OXE_DATASET_CONFIGS["{DATASET_NAME}"] = {{
     "image_obs_keys": {{"primary": "image", "secondary": None, "wrist": "wrist_image"}},
     "depth_obs_keys": {{"primary": None, "secondary": None, "wrist": None}},
     "state_obs_keys": ["state"],
+    "language_key": "language_instruction",
     "state_encoding": StateEncoding.POS_EULER,
     "action_encoding": ActionEncoding.EEF_POS,
     "absolute_action_mask": [False, False, False, False, False, False, True],
