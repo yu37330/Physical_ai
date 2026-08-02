@@ -6,10 +6,15 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from .evaluator import StateDeltaEvaluator
-from .models import AgentMode, AgentObservation
-from .planner import RuleBasedPlanner
+from .models import ActionProposal, AgentMode, AgentObservation
 from .safety import ActionSafetyValidator
 from .storage import TraceStore
+
+
+class Planner(Protocol):
+    """Rule-basedまたはOpenVLA Plannerの共通契約。"""
+
+    def propose(self, observation: AgentObservation, goal: str) -> ActionProposal: ...
 
 
 class Executor(Protocol):
@@ -22,7 +27,7 @@ class Executor(Protocol):
 class AgentOrchestrator:
     """1ステップ分のAgent判断を監査可能な形で生成する。"""
 
-    planner: RuleBasedPlanner
+    planner: Planner
     validator: ActionSafetyValidator
     evaluator: StateDeltaEvaluator
     trace_store: TraceStore
