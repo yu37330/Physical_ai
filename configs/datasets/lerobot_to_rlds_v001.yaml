@@ -14,6 +14,9 @@ source_mapping:
   wrist_video_key: observation.images.wrist
 
 rlds_contract:
+  tfds_splits:
+    train: train
+    validation: val
   observation:
     image: [256, 256, 3]
     wrist_image: [256, 256, 3]
@@ -31,7 +34,7 @@ transform_ownership:
   converter:
     - decode_selected_episode_videos
     - preserve_float32_state_and_action
-    - emit_train_and_validation_splits
+    - emit_train_and_val_splits
   openvla_standardization_transform:
     - rotate_front_image_180
     - rotate_wrist_image_180
@@ -40,6 +43,7 @@ transform_ownership:
     - normalize_state_and_action_with_bounds_q99
     - build_action_chunks_length_8
     - tokenize_language_instruction
+    - emit_separate_front_and_wrist_tensors
 
 compatibility_gates:
   state_dim: 8
@@ -50,12 +54,14 @@ compatibility_gates:
   finite_state_and_action: true
   required_batch_keys:
     - pixel_values
+    - pixel_values_wrist
     - input_ids
     - labels
     - actions
     - proprio
 
 notes:
+  - OpenVLA-OFT reads the validation split as val; the selection manifest continues to call it validation.
   - Do not rotate images in both the converter and OpenVLA transform. The default workflow rotates only in the OpenVLA transform.
   - Do not infer perturbation labels from episode numbers or instructions.
   - No-op removal is disabled in v001 until parity with the official modified LIBERO transform is measured.
