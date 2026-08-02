@@ -30,17 +30,23 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q src submission training scripts tests
 
-      - name: Validate YAML files
+      - name: Validate YAML and notebook JSON
         run: |
           python - <<'PY'
           from pathlib import Path
+          import json
           import yaml
-          files = sorted(Path('.').glob('**/*.yaml')) + sorted(Path('.').glob('**/*.yml'))
-          for path in files:
+          yaml_files = sorted(Path('.').glob('**/*.yaml')) + sorted(Path('.').glob('**/*.yml'))
+          for path in yaml_files:
               if '.github/workflows' in str(path):
                   continue
               yaml.safe_load(path.read_text(encoding='utf-8'))
-          print(f'validated {len(files)} YAML files')
+          notebooks = sorted(Path('notebooks').glob('*.ipynb'))
+          for path in notebooks:
+              payload = json.loads(path.read_text(encoding='utf-8'))
+              assert payload['nbformat'] == 4
+              assert isinstance(payload['cells'], list) and payload['cells']
+          print(f'validated {len(yaml_files)} YAML files and {len(notebooks)} notebooks')
           PY
 
       - name: Validate shell syntax
@@ -57,7 +63,8 @@ jobs:
           pytest -q \
             tests/test_dataset_pipeline.py \
             tests/test_rlds_contract.py \
-            tests/test_offline_runtime.py
+            tests/test_offline_runtime.py \
+            tests/test_pre_gpu_readiness.py
 
   synthetic-rlds-e2e:
     runs-on: ubuntu-latest
