@@ -18,6 +18,7 @@
 | Colab薄型Notebook | 5本実装済み | `notebooks/00`〜`04` |
 | S0 / S1 / S2 Config | 実装済み | `training/openvla_oft_a100/configs/stage_a_*` |
 | Notebook・YAML・Shell検査 | CI組込み済み | `.github/workflows/ci.yml` |
+| 公式Validator固定Commit実行 | Notebook組込み済み | `notebooks/04_submission_validate.ipynb` |
 
 ## CI構成
 
@@ -38,11 +39,26 @@
 
 - TensorFlow 2.15.1
 - TFDS 4.9.3
+- TF Metadata 1.15.0
+- Protobuf 3.20.3
 - Synthetic ParquetとFront/Wrist MP4生成
 - TFDS/RLDS shard生成
 - Train / Val読込
 - Source State / Action parity
 - Front / Wrist orientation parity
+
+## CIで事前に検出・修正した事項
+
+1. Repo rootが`PYTHONPATH`に入っておらず、`src`と`submission`をImportできなかった
+   - Workflowの`PYTHONPATH`と`pytest.ini`で修正
+2. TensorFlow 2.15と最新TF Metadata／Protobufの組合せが不整合だった
+   - TF Metadata 1.15.0、Protobuf 3.20.3へ固定
+3. TFDSが`src`をImplicit Namespace Packageとして解決し、Custom Builderのコード位置を特定できなかった
+   - `src/__init__.py`を追加しRegular Package化
+4. Mini Validationが1 EpisodeなのにParityを2 Episode要求していた
+   - `PARITY_EPISODES_PER_SPLIT`を外部設定化
+5. Mini実行で本番Dataset Manifestを昇格し得た
+   - `PROMOTE_MANIFEST=0`のMini modeを追加
 
 ## 実環境待ち
 
