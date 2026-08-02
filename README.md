@@ -18,6 +18,7 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 - [モデル選定・最小調整方針](docs/MODEL_STRATEGY.md)
 - [OpenVLA-OFT+の依存関係・オフライン推論成立性](docs/OPENVLA_OFFLINE_RUNTIME_ASSESSMENT.md)
 - [オフライン推論・学習環境の次の実行手順](docs/OFFLINE_AND_TRAINING_NEXT_STEPS.md)
+- [学習データ実体調査・Dataset Manifest設計](docs/DATASET_INVENTORY_AND_MANIFEST.md)
 - [運営Repo調査結果](docs/OFFICIAL_REPOSITORY_NOTES.md)
 - [提出・禁止事項チェック](docs/COMPLIANCE_AND_SUBMISSION.md)
 - [提出までの実行計画](docs/DELIVERY_PLAN.md)
@@ -26,7 +27,8 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 
 - `submission/openvla_oft_offline/`: OpenVLA-OFT+提出用オフライン推論ランタイム
 - `training/openvla_oft_a100/`: Google Colab A100 40GB向け学習環境
-- `tests/`: 前処理・Action chunk・依存境界のテスト
+- `src/data/`: Dataset棚卸し、Episode選定、選択取得、Manifest生成
+- `tests/`: 前処理・Action chunk・Dataset pipeline・依存境界のテスト
 
 ## 予定構成
 
