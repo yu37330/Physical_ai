@@ -51,6 +51,7 @@ def main() -> None:
     args = parser.parse_args()
 
     project_root = args.project_root.resolve()
+    drive_mounted = Path("/content/drive/MyDrive").is_dir() and args.drive_root.is_dir()
     work_disk = _disk(args.work_root)
     drive_disk = _disk(args.drive_root)
     nvidia = _run(
@@ -88,8 +89,10 @@ def main() -> None:
         "python_3_10_or_3_11": sys.version_info[:2] in ((3, 10), (3, 11)),
         "project_files_present": all(path_checks.values()),
         "git_commit_resolved": git.get("returncode") == 0 and bool(git.get("stdout")),
+        "drive_mounted": drive_mounted,
         "work_disk_free": int(work_disk["free_bytes"]) >= args.minimum_work_free_gb * 1024**3,
-        "drive_disk_free": int(drive_disk["free_bytes"]) >= args.minimum_drive_free_gb * 1024**3,
+        "drive_disk_free": drive_mounted
+        and int(drive_disk["free_bytes"]) >= args.minimum_drive_free_gb * 1024**3,
         "nvidia_smi_available": nvidia.get("returncode") == 0,
         "a100_40gb": has_a100 and has_40gb,
     }
@@ -97,6 +100,7 @@ def main() -> None:
         "python_3_10_or_3_11",
         "project_files_present",
         "git_commit_resolved",
+        "drive_mounted",
         "work_disk_free",
         "drive_disk_free",
         "nvidia_smi_available",
