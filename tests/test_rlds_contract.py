@@ -49,7 +49,7 @@ def test_episode_and_batch_contract() -> None:
     assert report["wrist_pixel_values"]["shape"] == [1, 3, 224, 224]
 
 
-def test_manifest_promoted_only_after_compatibility_pass() -> None:
+def test_manifest_promoted_only_after_parity_and_compatibility_pass() -> None:
     manifest = {
         "dataset_id": "parc_stage_a_balanced_v001",
         "structure": {"format": "lerobot_v2_1", "episode_count": 800},
@@ -61,11 +61,24 @@ def test_manifest_promoted_only_after_compatibility_pass() -> None:
         "version": "1.0.0",
         "selection_sha256": "a" * 64,
         "episode_counts": {"train": 640, "validation": 160},
+        "frame_counts": {"train": 6400, "validation": 1600},
+        "tfds_splits": ["train", "val"],
         "contract": {
             "state_dim": 8,
             "action_dim": 7,
             "image_size": 256,
             "rotate_180_during_conversion": False,
+        },
+    }
+    parity = {
+        "status": "pass",
+        "checks": {
+            "state_raw_parity": True,
+            "action_raw_parity": True,
+            "front_orientation_preserved": True,
+            "wrist_orientation_preserved": True,
+            "front_pixel_parity": True,
+            "wrist_pixel_parity": True,
         },
     }
     compatibility = {
@@ -87,7 +100,9 @@ def test_manifest_promoted_only_after_compatibility_pass() -> None:
         },
     }
 
-    result = update_manifest(copy.deepcopy(manifest), conversion, compatibility)
+    result = update_manifest(copy.deepcopy(manifest), conversion, parity, compatibility)
     assert result["structure"]["format"] == "tfds_rlds"
+    assert result["structure"]["frame_count"] == 8000
     assert result["quality"]["status"] == "payload_validated"
+    assert result["quality"]["checks"]["front_orientation_preserved"] is True
     assert result["quality"]["checks"]["action_chunk_shape_passed"] is True
