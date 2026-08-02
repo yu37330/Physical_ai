@@ -55,6 +55,7 @@ class ActionProposal:
     selected_action_id: str
     uncertainty: float
     requires_approval: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def selected(self) -> ActionCandidate:
