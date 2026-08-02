@@ -6,12 +6,15 @@
 - 完全ローカルCheckpoint Loader
 - Sylvest版Checkpoint IDのハードコード回避
 - Transformers 4.40.1用双方向SDPA Attention Patch
-- 2画像＋8次元Proprioception入力
+- PARC画像の180度回転、224px Resize、90% Center Crop
+- 2画像＋公式と同じ8次元Proprioception入力
 - Action Head、Proprio Projectorのローカルロード
 - 8×7 Action chunk cache
 - LIBERO公式と同じGripper後処理
 - OpenVLA-OFT Repoの固定Commit Checkout
 - 既存Action Head・Proprio Projectorを引き継ぐ学習Patch
+- Stage AのHead＋Proprioだけ学習する設定
+- Stage BでVision側LoRAを凍結する設定
 - Model revision記録付きDownloader
 
 ## 明日最初に行うこと
@@ -43,8 +46,6 @@ python training/openvla_oft_a100/scripts/download_base_checkpoint.py \
   --output /content/drive/MyDrive/PARC2026/models/openvla_oft_plus_base
 ```
 
-`model_source_manifest.json`へ解決済みRevisionを保存する。
-
 ### 5. 提出用Prismaticコードを準備
 
 ```bash
@@ -54,15 +55,7 @@ bash submission/openvla_oft_offline/scripts/prepare_vendor.sh
 
 ### 6. 公式Fork基準出力を保存
 
-固定した画像、Proprioception、Instructionで以下を保存する。
-
-- Action chunk
-- Peak VRAM
-- Cold start
-- First inference
-- Warm inference 20回
-- Package versions
-- Git commit
+固定入力でAction chunk、Peak VRAM、Cold start、First inference、Warm inference 20回を保存する。
 
 ### 7. Offline runtimeとのParity
 
@@ -71,9 +64,9 @@ python submission/openvla_oft_offline/tools/compare_action_chunks.py \
   official_fork_actions.npy offline_runtime_actions.npy
 ```
 
-最初はAttention差分だけを確認するため、公式側で前処理済み画像を保存して同じ画像を使う。画像前処理を含むEnd-to-End比較は別に実施する。
+Attention差分を先に検証するため、公式側で前処理済み画像を保存して同じ画像を使う。PIL版前処理と公式TensorFlow版のEnd-to-End差分は別に評価する。
 
-### 8. Smoke Fine-tuning
+### 8. Stage A Smoke Fine-tuning
 
 ```bash
 cd /content/openvla-oft
@@ -81,10 +74,11 @@ export DATA_ROOT_DIR=/content/drive/MyDrive/PARC2026/datasets/rlds
 export RUN_ROOT_DIR=/content/drive/MyDrive/PARC2026/experiments
 export DATASET_NAME=<prepared_dataset_name>
 export CHECKPOINT_DIR=/content/drive/MyDrive/PARC2026/models/openvla_oft_plus_base
+export TRAIN_VLA_LORA=False
 bash /content/Physical_ai/training/openvla_oft_a100/scripts/train_smoke.sh
 ```
 
-既存Action HeadとProprio Projectorを引き継がずにランダム初期化すると素の性能を失うため、`component_checkpoint_dir`を必ず指定する。
+Stage Aは既存VLAを固定し、事前学習済みAction HeadとProprio Projectorだけを小さく調整する。Stage Bへ進む場合のみ`TRAIN_VLA_LORA=True`とし、Vision側LoRAはFreezeする。
 
 ## Go / No-Go
 

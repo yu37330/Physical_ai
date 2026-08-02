@@ -16,31 +16,28 @@ class PolicyInput:
 
 
 def quaternion_xyzw_to_axis_angle(quaternion: np.ndarray) -> np.ndarray:
-    quaternion = np.asarray(quaternion, dtype=np.float64)
-    if quaternion.shape != (4,):
-        raise ValueError(f"Quaternion must have shape (4,), got {quaternion.shape}")
-    norm = float(np.linalg.norm(quaternion))
-    if norm < 1e-12:
+    """Match the official OpenVLA-OFT LIBERO quat2axisangle implementation."""
+    quat = np.asarray(quaternion, dtype=np.float64).reshape(4).copy()
+    quat[3] = np.clip(quat[3], -1.0, 1.0)
+    denominator = np.sqrt(max(0.0, 1.0 - quat[3] * quat[3]))
+    if math.isclose(float(denominator), 0.0):
         return np.zeros(3, dtype=np.float32)
-
-    x, y, z, w = quaternion / norm
-    w = float(np.clip(w, -1.0, 1.0))
-    angle = 2.0 * math.acos(w)
-    sin_half = math.sqrt(max(0.0, 1.0 - w * w))
-    if sin_half < 1e-8 or angle < 1e-8:
-        return np.zeros(3, dtype=np.float32)
-
-    axis = np.asarray([x, y, z], dtype=np.float64) / sin_half
-    if angle > math.pi:
-        angle -= 2.0 * math.pi
-    return (axis * angle).astype(np.float32)
+    return (
+        quat[:3] * 2.0 * math.acos(float(quat[3])) / denominator
+    ).astype(np.float32)
 
 
-def resize_then_center_crop(image: np.ndarray, size: int = 224, crop_area: float = 0.9) -> Image.Image:
-    """Approximate the official TF Lanczos resize + 90% center-crop pipeline using PIL."""
+def rotate_libero_image(image: np.ndarray) -> np.ndarray:
+    """Rotate the raw LIBERO camera image 180 degrees to match training preprocessing."""
     array = np.asarray(image)
     if array.ndim != 3 or array.shape[2] != 3:
         raise ValueError(f"Expected HxWx3 image, got {array.shape}")
+    return np.ascontiguousarray(array[::-1, ::-1])
+
+
+def resize_then_center_crop(image: np.ndarray, size: int = 224, crop_area: float = 0.9) -> Image.Image:
+    """Approximate official TF Lanczos resize + 90% center crop with PIL."""
+    array = rotate_libero_image(image)
     if array.dtype != np.uint8:
         array = np.clip(array, 0, 255).astype(np.uint8)
 
@@ -68,9 +65,7 @@ def build_policy_input(observation: dict[str, np.ndarray], instruction: str) -> 
         raise KeyError(f"Missing observation fields: {missing}")
 
     eef_pos = np.asarray(observation["robot0_eef_pos"], dtype=np.float32).reshape(3)
-    axis_angle = quaternion_xyzw_to_axis_angle(
-        np.asarray(observation["robot0_eef_quat"], dtype=np.float32).reshape(4)
-    )
+    axis_angle = quaternion_xyzw_to_axis_angle(observation["robot0_eef_quat"])
     gripper = np.asarray(observation["robot0_gripper_qpos"], dtype=np.float32).reshape(2)
     proprio = np.concatenate((eef_pos, axis_angle, gripper)).astype(np.float32)
 

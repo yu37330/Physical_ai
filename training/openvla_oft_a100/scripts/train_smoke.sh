@@ -8,6 +8,8 @@ CHECKPOINT_DIR="${CHECKPOINT_DIR:?Set CHECKPOINT_DIR to the downloaded local che
 MAX_STEPS="${MAX_STEPS:-500}"
 LORA_RANK="${LORA_RANK:-8}"
 GRAD_ACCUMULATION_STEPS="${GRAD_ACCUMULATION_STEPS:-8}"
+TRAIN_VLA_LORA="${TRAIN_VLA_LORA:-False}"
+FREEZE_VISION_LORA="${FREEZE_VISION_LORA:-True}"
 
 export WANDB_MODE="${WANDB_MODE:-offline}"
 
@@ -33,6 +35,8 @@ python vla-scripts/finetune.py \
   --image_aug True \
   --use_lora True \
   --lora_rank "$LORA_RANK" \
+  --train_vla_lora "$TRAIN_VLA_LORA" \
+  --freeze_vision_lora "$FREEZE_VISION_LORA" \
   --merge_lora_during_training False \
   --wandb_project parc2026-openvla-oft \
-  --run_id_note smoke-lora-r8-a100-40gb
+  --run_id_note smoke-stage-a-a100-40gb

@@ -9,12 +9,19 @@ from submission.openvla_oft_offline.runtime.action_postprocess import (
 from submission.openvla_oft_offline.runtime.preprocessing import (
     build_policy_input,
     quaternion_xyzw_to_axis_angle,
+    rotate_libero_image,
 )
 
 
 def test_identity_quaternion_to_zero_axis_angle() -> None:
     result = quaternion_xyzw_to_axis_angle(np.asarray([0.0, 0.0, 0.0, 1.0]))
     np.testing.assert_allclose(result, np.zeros(3), atol=1e-7)
+
+
+def test_rotate_libero_image_180_degrees() -> None:
+    image = np.arange(2 * 3 * 3, dtype=np.uint8).reshape(2, 3, 3)
+    rotated = rotate_libero_image(image)
+    np.testing.assert_array_equal(rotated[0, 0], image[-1, -1])
 
 
 def test_build_policy_input_shapes() -> None:

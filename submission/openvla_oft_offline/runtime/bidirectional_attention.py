@@ -18,9 +18,11 @@ def assert_supported_transformers_version() -> None:
 def _padding_only_bidirectional_mask(causal_mask):
     if causal_mask is None:
         return None
-    query_length = causal_mask.shape[-2]
+    # Match the upstream OpenVLA-OFT fork exactly: repeat the final mask row
+    # across D query positions, where D is the key sequence length.
+    length = causal_mask.shape[-1]
     last_row = causal_mask[:, :, -1, :].clone()
-    return last_row.unsqueeze(2).expand(-1, -1, query_length, -1)
+    return last_row.unsqueeze(2).expand(-1, -1, length, -1)
 
 
 def apply_bidirectional_attention_patch() -> None:
@@ -94,7 +96,8 @@ def apply_bidirectional_attention_patch() -> None:
             dropout_p=self.attention_dropout if self.training else 0.0,
             is_causal=False,
         )
-        attn_output = attn_output.transpose(1, 2).contiguous().view(bsz, q_len, self.hidden_size)
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.view(bsz, q_len, self.hidden_size)
         attn_output = self.o_proj(attn_output)
         return attn_output, None, past_key_value
 
