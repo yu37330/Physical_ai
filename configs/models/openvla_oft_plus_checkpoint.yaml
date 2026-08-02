@@ -1,0 +1,47 @@
+schema_version: 1
+model_id: openvla_oft_plus_libero_plus_mixdata
+source:
+  repo_id: Sylvest/openvla-7b-oft-finetuned-libero-plus-mixdata
+  repo_type: model
+  requested_revision: main
+  license: verify_from_model_card
+required_patterns:
+  - config.json
+  - model*.safetensors
+  - tokenizer*
+  - special_tokens_map.json
+  - action_head*checkpoint*.pt
+  - proprio_projector*checkpoint*.pt
+  - dataset_statistics.json
+optional_patterns:
+  - generation_config.json
+  - preprocessor_config.json
+  - added_tokens.json
+  - processor_config.json
+  - lora_adapter/**
+training_only_patterns:
+  - optimizer*
+  - scheduler*
+  - trainer_state.json
+  - rng_state*
+  - checkpoint-*/**
+  - runs/**
+  - wandb/**
+submission_exclude_patterns:
+  - lora_adapter/**
+  - optimizer*
+  - scheduler*
+  - trainer_state.json
+  - rng_state*
+  - checkpoint-*/**
+  - model_source_manifest.json
+budgets:
+  model_directory_max_bytes: 19000000000
+  submission_zip_max_bytes: 20000000000
+  extracted_submission_max_bytes: 40000000000
+checks:
+  require_resolved_revision: true
+  require_sha256_for_every_file: true
+  reject_symlinks: true
+  reject_training_state: true
+  reject_duplicate_model_shards: true
