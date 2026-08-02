@@ -35,7 +35,8 @@ def test_episode_and_batch_contract() -> None:
 
     report = validate_batch_contract(
         {
-            "pixel_values": np.zeros((1, 2, 3, 224, 224), dtype=np.float32),
+            "pixel_values": np.zeros((1, 3, 224, 224), dtype=np.float32),
+            "pixel_values_wrist": np.zeros((1, 3, 224, 224), dtype=np.float32),
             "input_ids": np.zeros((1, 64), dtype=np.int64),
             "labels": np.zeros((1, 64), dtype=np.int64),
             "actions": np.zeros((1, 8, 7), dtype=np.float32),
@@ -44,6 +45,8 @@ def test_episode_and_batch_contract() -> None:
     )
     assert report["actions_shape"] == [1, 8, 7]
     assert report["proprio_shape"] == [1, 8]
+    assert report["front_pixel_values"]["shape"] == [1, 3, 224, 224]
+    assert report["wrist_pixel_values"]["shape"] == [1, 3, 224, 224]
 
 
 def test_manifest_promoted_only_after_compatibility_pass() -> None:
@@ -67,11 +70,18 @@ def test_manifest_promoted_only_after_compatibility_pass() -> None:
     }
     compatibility = {
         "status": "pass",
-        "contract": {"action_chunk_length": 8, "action_dim": 7, "state_dim": 8},
+        "contract": {
+            "action_chunk_length": 8,
+            "action_dim": 7,
+            "state_dim": 8,
+            "front_tensor_key": "pixel_values",
+            "wrist_tensor_key": "pixel_values_wrist",
+        },
         "checks": {
             "rlds_dataset_constructed": True,
             "rlds_batch_transform_passed": True,
             "collator_passed": True,
+            "front_and_wrist_tensors_present": True,
             "finite_action_and_proprio": True,
             "action_chunk_shape_passed": True,
         },
