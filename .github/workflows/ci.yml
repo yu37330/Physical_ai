@@ -70,7 +70,8 @@ jobs:
             tests/test_offline_runtime.py \
             tests/test_pre_gpu_readiness.py \
             tests/test_agent_cockpit.py \
-            tests/test_agent_cockpit_data_and_policy.py
+            tests/test_agent_cockpit_data_and_policy.py \
+            tests/test_autonomous_replay.py
 
   frontend-smoke:
     runs-on: ubuntu-latest
