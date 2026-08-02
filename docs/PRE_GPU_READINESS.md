@@ -26,7 +26,7 @@ configs/datasets/mini_e2e_v001.yaml
 src/data/build_mini_selection.py
 ```
 
-Mini Datasetは本番800 Episodeと同じConverter、Parity検証、OpenVLA Batch Transformを通す。
+Mini Datasetは本番800 Episodeと同じConverter、Parity検証、OpenVLA Batch Transformを通す。Mini実行時は`PROMOTE_MANIFEST=0`とし、本番Dataset Manifestを昇格しない。
 
 ### 2.2 Synthetic LeRobot→RLDS E2E
 
@@ -46,6 +46,8 @@ Synthetic LeRobot payload
 src/data/generate_synthetic_lerobot_fixture.py
 tests/test_synthetic_rlds_e2e.py
 ```
+
+GitHub Actions上で、Synthetic Parquet・MP4生成からTFDS/RLDS shard生成、Train/Val読込、Source parityまで成功済みである。
 
 ### 2.3 GitHub Actions
 
@@ -91,7 +93,9 @@ training/openvla_oft_a100/scripts/download_base_checkpoint.py
 - Dataset statisticsが存在する
 - Symlinkがない
 - Optimizer等の学習状態を提出対象へ含めない
+- Hugging Face download cacheを提出対象へ含めない
 - Model directoryが内部19GB基準以内
+- Model cardで確認したMITライセンスを記録する
 
 ### 2.5 Colab薄型Notebook
 
@@ -106,6 +110,15 @@ notebooks/04_submission_validate.ipynb
 ```
 
 これにより、VS Code、Shell、Colabの実行経路を共通化する。
+
+`04_submission_validate.ipynb`は運営Repoを固定Commitで取得し、次を分けて実行する。
+
+```text
+Source directory static validation
+ZIP static validation
+pip dry-run
+Dynamic health/reset/act smoke test
+```
 
 ### 2.6 学習条件の固定
 
@@ -125,7 +138,27 @@ training/openvla_oft_a100/configs/stage_a_s2_head_proprio_500.yaml
 
 S1がGateを通過しない場合、S2へ進まない。
 
-## 3. 明日の実行順
+## 3. CIで事前に解消した問題
+
+実装後のCIにより、次をGPU利用前に検出・修正した。
+
+1. `PYTHONPATH`未設定による`src`・`submission` Import失敗
+2. TensorFlow 2.15と最新TF Metadata／Protobufの不整合
+3. TFDSがImplicit Namespace PackageからCustom Builderの位置を解決できない問題
+4. Mini Validation 1件に対してParity 2件を要求する問題
+5. Mini実行から本番Dataset Manifestを誤って昇格し得る問題
+
+採用したRLDS変換依存:
+
+```text
+TensorFlow 2.15.1
+TensorFlow Datasets 4.9.3
+TensorFlow Metadata 1.15.0
+Protobuf 3.20.3
+RLDS 0.1.8
+```
+
+## 4. 明日の実行順
 
 ### Step 1: 環境Gate
 
@@ -171,7 +204,14 @@ python -m src.data.build_mini_selection \
   --output artifacts/datasets/mini_selection_v001.json
 ```
 
-Payload取得後、`prepare_stage_a_rlds.sh`を実行する。
+Payload取得後、Mini modeで`prepare_stage_a_rlds.sh`を実行する。
+
+```bash
+PARITY_EPISODES_PER_SPLIT=1 \
+COMPATIBILITY_SAMPLES_PER_SPLIT=4 \
+PROMOTE_MANIFEST=0 \
+bash training/openvla_oft_a100/scripts/prepare_stage_a_rlds.sh
+```
 
 ### Step 4: OpenVLA Batch互換性
 
@@ -183,7 +223,7 @@ rlds_source_parity.json
 openvla_rlds_compatibility.json
 ```
 
-`dataset_manifest.payload_validated.json`が生成されるまで学習しない。
+Miniが通過した後、800 Episodeで`PROMOTE_MANIFEST=1`として`dataset_manifest.payload_validated.json`を生成する。
 
 ### Step 5: S0→S1→S2
 
@@ -192,7 +232,7 @@ openvla_rlds_compatibility.json
 3. Loss、VRAM、Checkpoint再ロード、Action差分を確認
 4. 問題がなければS2を500 steps実行
 
-## 4. 中止条件
+## 5. 中止条件
 
 以下の場合は800 Episode変換またはS2へ進まない。
 
@@ -207,18 +247,18 @@ openvla_rlds_compatibility.json
 - NaNまたはInfが発生
 - 学習後にGripper出力が崩れる
 
-## 5. 未実測事項
+## 6. 未実測事項
 
-現時点でコードとCIを準備したが、次は実環境で確定する。
+CPU／Synthetic範囲のCIは通過した。次は実環境で確定する。
 
-- GitHub Actionsの全Job成功
-- 実Source Datasetによる3 Episode Mini E2E
+- 公開Datasetによる3 Episode Mini E2E
 - 800 Episodeの変換時間とDisk使用量
-- OpenVLA-OFT+ Base Checkpointの実ファイル構成
+- OpenVLA-OFT+ Base Checkpointの実ファイル構成・SHA256・容量
+- OpenVLA-OFT実CheckpointによるBatch Transform
 - A100 40GBのPeak VRAM
 - L4 24GBのCold startと最大Latency
 - 運営Validatorによる最終ZIP確認
 
-## 6. 原則
+## 7. 原則
 
-> Mini Dataset、Source parity、OpenVLA Batch compatibility、Checkpoint Manifestの4 Gateを通してから、800 Episode変換とStage A学習へ進む。
+> CI、Mini Dataset、Source parity、OpenVLA Batch compatibility、Checkpoint Manifestの5 Gateを通してから、800 Episode変換とStage A学習へ進む。
