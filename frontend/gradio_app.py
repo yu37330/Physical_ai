@@ -367,9 +367,8 @@ def _run_agent_step(
 
 
 def build_app() -> gr.Blocks:
-    loaded_sample = gr.State(value=None)
-
     with gr.Blocks(title="Physical AI Agent Cockpit") as app:
+        loaded_sample = gr.State(value=None)
         gr.Markdown(
             "# Physical AI Agent Cockpit\n"
             "Colab GPU、Google Drive、RLDS、OpenVLA Policyを接続する検証用UIです。"
