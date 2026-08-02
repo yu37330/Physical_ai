@@ -10,10 +10,11 @@ BASE_CHECKPOINT="${BASE_CHECKPOINT:?Set BASE_CHECKPOINT to the local OpenVLA-OFT
 MANIFEST_FILE="${MANIFEST_FILE:?Set MANIFEST_FILE to the metadata-selected dataset manifest}"
 ARTIFACT_ROOT="${ARTIFACT_ROOT:-$PROJECT_ROOT/artifacts/datasets/parc_stage_a_balanced_v001}"
 
+export PYTHONPATH="$OPENVLA_ROOT:$PROJECT_ROOT:${PYTHONPATH:-}"
 mkdir -p "$ARTIFACT_ROOT" "$TFDS_ROOT"
 python -m pip install -r "$PROJECT_ROOT/training/openvla_oft_a100/requirements-data.txt"
 
-python "$PROJECT_ROOT/src/data/convert_selected_lerobot_to_rlds.py" \
+python -m src.data.convert_selected_lerobot_to_rlds \
   --source-root "$SOURCE_ROOT" \
   --selection "$SELECTION_FILE" \
   --output-root "$TFDS_ROOT" \
@@ -22,7 +23,6 @@ python "$PROJECT_ROOT/src/data/convert_selected_lerobot_to_rlds.py" \
 python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/patch_parc_dataset_registry.py" \
   --openvla-root "$OPENVLA_ROOT"
 
-PYTHONPATH="$OPENVLA_ROOT:$PROJECT_ROOT:${PYTHONPATH:-}" \
 python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/validate_rlds_batch_transform.py" \
   --openvla-root "$OPENVLA_ROOT" \
   --data-root "$TFDS_ROOT" \
@@ -31,13 +31,13 @@ python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/validate_rlds_batch_tran
   --samples-per-split 4 \
   --output "$ARTIFACT_ROOT/openvla_rlds_compatibility.json"
 
-python "$PROJECT_ROOT/src/data/update_dataset_manifest_after_rlds.py" \
+python -m src.data.update_dataset_manifest_after_rlds \
   --manifest "$MANIFEST_FILE" \
   --conversion-report "$ARTIFACT_ROOT/rlds_conversion_report.json" \
   --compatibility-report "$ARTIFACT_ROOT/openvla_rlds_compatibility.json" \
   --output "$ARTIFACT_ROOT/dataset_manifest.payload_validated.json"
 
-python "$PROJECT_ROOT/src/data/validate_dataset_manifest.py" \
+python -m src.data.validate_dataset_manifest \
   "$ARTIFACT_ROOT/dataset_manifest.payload_validated.json" \
   --schema "$PROJECT_ROOT/schemas/dataset_manifest.schema.json"
 
