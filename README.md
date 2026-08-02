@@ -14,6 +14,7 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 
 ## ドキュメント
 
+- [GPU実行前の準備状況](docs/PRE_GPU_READINESS.md)
 - [基盤構想](docs/PLATFORM_ARCHITECTURE.md)
 - [モデル選定・最小調整方針](docs/MODEL_STRATEGY.md)
 - [OpenVLA-OFT+の依存関係・オフライン推論成立性](docs/OPENVLA_OFFLINE_RUNTIME_ASSESSMENT.md)
@@ -25,17 +26,33 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 - [提出・禁止事項チェック](docs/COMPLIANCE_AND_SUBMISSION.md)
 - [提出までの実行計画](docs/DELIVERY_PLAN.md)
 
+## Colab実行順
+
+```text
+00_environment_check.ipynb
+→ 01_model_feasibility.ipynb
+→ 02_dataset_prepare.ipynb
+→ 03_stage_a_train.ipynb
+→ 04_submission_validate.ipynb
+```
+
+詳細は[`notebooks/README.md`](notebooks/README.md)を参照してください。
+
 ## 実装ディレクトリ
 
 - `submission/openvla_oft_offline/`: OpenVLA-OFT+提出用オフライン推論ランタイム
 - `training/openvla_oft_a100/`: Google Colab A100 40GB向け学習環境、RLDS変換・Batch互換検証
-- `src/data/`: Dataset棚卸し、Episode選定、選択取得、LeRobot→RLDS変換、Manifest生成・昇格
-- `tests/`: 前処理・Action chunk・Dataset pipeline・RLDS契約・依存境界のテスト
+- `src/data/`: Dataset棚卸し、Episode選定、Mini E2E、LeRobot→RLDS変換、Manifest生成・昇格
+- `configs/models/`: Checkpointの必要ファイル・容量・提出対象契約
+- `notebooks/`: Scriptを順番に呼び出すColab薄型Notebook
+- `.github/workflows/`: Unit、契約、Synthetic RLDS E2Eの自動検証
+- `tests/`: 前処理、Action chunk、Dataset pipeline、RLDS契約、Checkpoint Manifest、依存境界のテスト
 
 ## 予定構成
 
 ```text
 Physical_ai/
+├── .github/workflows/
 ├── docs/
 ├── official_reference/
 ├── configs/
@@ -59,5 +76,7 @@ Physical_ai/
 4. 大容量データとモデル重みはGitHubへ保存しない
 5. 各実験に`run_manifest.json`を残す
 6. 各データセットに`dataset_manifest.json`を残す
-7. 公式評価の観測、Seed、非公開タスク情報は保存・学習利用しない
-8. 最終提出物とレポートの内容を一致させる
+7. 各モデルに`checkpoint_manifest.json`を残す
+8. 公式評価の観測、Seed、非公開タスク情報は保存・学習利用しない
+9. 最終提出物とレポートの内容を一致させる
+10. Mini Datasetと全事前Gateを通過してから800 Episode変換とStage A学習へ進む
