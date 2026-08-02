@@ -18,6 +18,10 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from src.agent_cockpit import AgentMode, AgentObservation, AgentOrchestrator
+from src.agent_cockpit.autonomous_replay import (
+    AutonomousReplayRunner,
+    ReplayLoopConfig,
+)
 from src.agent_cockpit.dataset_explorer import (
     RLDSEpisodeReader,
     build_dataset_overview,
@@ -32,7 +36,11 @@ from src.agent_cockpit.policy_adapter import (
 )
 from src.agent_cockpit.safety import ActionSafetyValidator
 from src.agent_cockpit.storage import TraceStore
-from src.agent_cockpit.visualization import action_chunk_figure, action_chunk_rows
+from src.agent_cockpit.visualization import (
+    action_chunk_figure,
+    action_chunk_rows,
+    replay_metrics_figure,
+)
 
 
 DRIVE_ROOT = os.environ.get(
@@ -366,6 +374,93 @@ def _run_agent_step(
     )
 
 
+def _run_autonomous_replay(
+    parent_run_id: str,
+    dataset_dir: str,
+    split: str,
+    episode_offset: int,
+    start_frame: int,
+    goal: str,
+    planner_type: str,
+    checkpoint_dir: str,
+    max_steps: int,
+    action_mae_threshold: float,
+    max_consecutive_mismatches: int,
+    max_repeated_actions: int,
+    stop_on_safety_failure: bool,
+) -> tuple[dict[str, Any], list[list[Any]], Any, str]:
+    if not parent_run_id:
+        raise gr.Error("Dashboardで先に親Runを作成してください。")
+    replay_run_id = (
+        f"{parent_run_id}_replay_"
+        f"{datetime.now().strftime('%H%M%S_%f')}"
+    )
+    store = TraceStore.from_environment()
+    try:
+        episode = RLDSEpisodeReader(dataset_dir).read_episode(
+            split=split,
+            episode_offset=int(episode_offset),
+        )
+        store.create_run(
+            replay_run_id,
+            {
+                "parent_run_id": parent_run_id,
+                "mode": "offline_autonomous_replay",
+                "dataset_dir": dataset_dir,
+                "split": split,
+                "episode_offset": int(episode_offset),
+                "planner_type": planner_type,
+                "checkpoint_dir": checkpoint_dir.strip(),
+            },
+        )
+        config = ReplayLoopConfig(
+            max_steps=int(max_steps),
+            action_mae_threshold=float(action_mae_threshold),
+            max_consecutive_mismatches=int(max_consecutive_mismatches),
+            max_repeated_actions=int(max_repeated_actions),
+            stop_on_safety_failure=bool(stop_on_safety_failure),
+        )
+        runner = AutonomousReplayRunner(
+            orchestrator=_build_orchestrator(planner_type, checkpoint_dir),
+            trace_store=store,
+            config=config,
+        )
+        summary = runner.run(
+            run_id=replay_run_id,
+            goal=goal,
+            episode=episode,
+            start_frame=int(start_frame),
+        )
+    except (FileNotFoundError, ValueError, KeyError, IndexError, RuntimeError) as exc:
+        raise gr.Error(str(exc)) from exc
+
+    rows = [
+        [
+            row["loop_step"],
+            row["frame_id"],
+            row["action_mae"],
+            row["action_rmse"],
+            row["action_match"],
+            row["safety_passed"],
+            row["repeated_action_count"],
+            row["consecutive_mismatches"],
+            row.get("latency_ms"),
+            row["stop_reason"],
+        ]
+        for row in summary["steps"]
+    ]
+    figure = replay_metrics_figure(
+        summary["steps"],
+        float(action_mae_threshold),
+    )
+    status = (
+        f"Replay完了: {replay_run_id} / "
+        f"steps={summary['executed_steps']} / stop={summary['stop_reason']} / "
+        f"summary={summary['summary_path']}"
+    )
+    return summary, rows, figure, status
+
+
 def build_app() -> gr.Blocks:
     with gr.Blocks(title="Physical AI Agent Cockpit") as app:
         loaded_sample = gr.State(value=None)
@@ -620,6 +715,126 @@ def build_app() -> gr.Blocks:
                     evaluation,
                     status,
                     agent_plot,
+                ],
+            )
+
+        with gr.Tab("Autonomous Replay"):
+            gr.Markdown(
+                "記録済みRLDS Episodeを順に観測し、各FrameでAIが次Actionを再計画します。"
+                "これは実機や因果的シミュレーションではなく、オフライン軌跡評価です。"
+            )
+            replay_dataset_dir = gr.Textbox(
+                label="TFDS Builder directory",
+                placeholder="Dataset Explorerと同じBuilder directory",
+            )
+            with gr.Row():
+                replay_split = gr.Dropdown(
+                    label="Split",
+                    choices=["train", "val"],
+                    value="train",
+                )
+                replay_episode_offset = gr.Number(
+                    label="Episode offset",
+                    value=0,
+                    precision=0,
+                )
+                replay_start_frame = gr.Number(
+                    label="Start frame",
+                    value=0,
+                    precision=0,
+                )
+            with gr.Row():
+                replay_planner = gr.Dropdown(
+                    label="Planner",
+                    choices=["rule_based", "openvla"],
+                    value="rule_based",
+                )
+                replay_checkpoint = gr.Textbox(
+                    label="OpenVLA Checkpoint directory",
+                    placeholder=f"{DRIVE_ROOT}/30_models/...",
+                )
+            replay_goal = gr.Textbox(
+                label="最終目標",
+                value="記録Episodeのタスクを完了する",
+            )
+            with gr.Row():
+                replay_max_steps = gr.Number(
+                    label="最大Step",
+                    value=5,
+                    precision=0,
+                )
+                replay_mae_threshold = gr.Number(
+                    label="Action MAE閾値",
+                    value=0.25,
+                )
+                replay_max_mismatches = gr.Number(
+                    label="連続誤差超過で停止",
+                    value=3,
+                    precision=0,
+                )
+                replay_max_repeated = gr.Number(
+                    label="同一Action反復で停止",
+                    value=3,
+                    precision=0,
+                )
+            replay_stop_safety = gr.Checkbox(
+                label="Safety違反で即停止",
+                value=True,
+            )
+            replay_button = gr.Button("自律Replayを実行", variant="primary")
+            replay_summary = gr.JSON(label="Replay summary")
+            replay_rows = gr.Dataframe(
+                headers=[
+                    "loop_step",
+                    "frame_id",
+                    "action_mae",
+                    "action_rmse",
+                    "action_match",
+                    "safety_passed",
+                    "repeat_count",
+                    "mismatch_count",
+                    "latency_ms",
+                    "stop_reason",
+                ],
+                datatype=[
+                    "number",
+                    "number",
+                    "number",
+                    "number",
+                    "bool",
+                    "bool",
+                    "number",
+                    "number",
+                    "number",
+                    "str",
+                ],
+                label="Observe → Plan → Evaluate → Replan",
+                interactive=False,
+            )
+            replay_plot = gr.Plot(label="Action MAE timeline")
+            replay_status = gr.Textbox(label="Replay保存結果", interactive=False)
+            replay_button.click(
+                _run_autonomous_replay,
+                inputs=[
+                    run_id,
+                    replay_dataset_dir,
+                    replay_split,
+                    replay_episode_offset,
+                    replay_start_frame,
+                    replay_goal,
+                    replay_planner,
+                    replay_checkpoint,
+                    replay_max_steps,
+                    replay_mae_threshold,
+                    replay_max_mismatches,
+                    replay_max_repeated,
+                    replay_stop_safety,
+                ],
+                outputs=[
+                    replay_summary,
+                    replay_rows,
+                    replay_plot,
+                    replay_status,
                 ],
             )
 
