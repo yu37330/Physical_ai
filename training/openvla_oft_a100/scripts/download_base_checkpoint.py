@@ -2,12 +2,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 import yaml
 from huggingface_hub import HfApi, snapshot_download
 
 from build_checkpoint_manifest import build_manifest
+
+
+def _materialize_symlinks(root: Path) -> list[str]:
+    materialized: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_symlink():
+            continue
+        target = path.resolve(strict=True)
+        relative = path.relative_to(root).as_posix()
+        temporary = path.with_name(path.name + ".materializing")
+        shutil.copy2(target, temporary)
+        path.unlink()
+        temporary.replace(path)
+        materialized.append(relative)
+    return materialized
 
 
 def main() -> None:
@@ -34,12 +50,14 @@ def main() -> None:
         repo_id=args.repo_id,
         revision=resolved_sha,
         local_dir=output,
-        local_dir_use_symlinks=False,
     )
+    materialized_symlinks = _materialize_symlinks(output)
+
     source_manifest = {
         "repo_id": args.repo_id,
         "requested_revision": args.revision,
         "resolved_revision": resolved_sha,
+        "materialized_symlinks": materialized_symlinks,
     }
     source_manifest_path = output / "model_source_manifest.json"
     source_manifest_path.write_text(
