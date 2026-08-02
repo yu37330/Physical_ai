@@ -27,15 +27,13 @@ def _jsonable(value: Any) -> Any:
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
+    if hasattr(value, "detach"):
+        value = value.detach().cpu().numpy()
     if isinstance(value, np.ndarray):
         return value.tolist()
     if isinstance(value, np.generic):
         return value.item()
     return value
-
-
-def _shape(value: Any) -> list[int]:
-    return list(getattr(value, "shape", np.asarray(value).shape))
 
 
 def validate_split(
@@ -95,7 +93,6 @@ def validate_split(
     for index, batch in enumerate(loader):
         report = validate_batch_contract(batch)
         report["index"] = index
-        report["pixel_values_dtype"] = str(batch["pixel_values"].dtype)
         report["actions_dtype"] = str(batch["actions"].dtype)
         report["proprio_dtype"] = str(batch["proprio"].dtype)
         sample_reports.append(report)
@@ -148,6 +145,8 @@ def main() -> None:
             "action_chunk_length": ACTION_CHUNK_LENGTH,
             "action_dim": ACTION_DIM,
             "state_dim": STATE_DIM,
+            "front_tensor_key": "pixel_values",
+            "wrist_tensor_key": "pixel_values_wrist",
             "two_camera_input": True,
         },
         "splits": split_reports,
@@ -155,6 +154,7 @@ def main() -> None:
             "rlds_dataset_constructed": True,
             "rlds_batch_transform_passed": True,
             "collator_passed": True,
+            "front_and_wrist_tensors_present": True,
             "finite_action_and_proprio": True,
             "action_chunk_shape_passed": True,
         },
