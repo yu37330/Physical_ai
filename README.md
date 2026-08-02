@@ -8,7 +8,7 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 - GitHubをコード・設定・履歴の正本とする
 - Google ColabをGPU学習・重い評価の実行環境とする
 - Google Driveをモデル、データ、ログ、提出物の保管先とする
-- GradioでColab上の実験、推論、Agent Actionを確認できる検証UIを構築する
+- GradioでColab上のRLDS確認、OpenVLA推論、Agent Action提案を実行できる検証UIを構築する
 - 将来はReact/FastAPIで実験結果を比較・管理できる常設基盤へ拡張する
 - Markdown/JSONに実験知識を蓄積し、LLMが過去実験を参照して次の実験を提案できるようにする
 - 公式評価由来の情報を学習データや自動最適化へ流入させない
@@ -37,7 +37,7 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 → 02_dataset_prepare.ipynb
 → 03_stage_a_train.ipynb
 → 04_submission_validate.ipynb
-→ 05_agent_cockpit.ipynb（実験・推論・Agent検証）
+→ 05_agent_cockpit.ipynb（RLDS・推論・Agent検証）
 ```
 
 詳細は[`notebooks/README.md`](notebooks/README.md)を参照してください。
@@ -54,7 +54,9 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 - Agent Cockpit
 - Run Trace
 
-Traceは`MyDrive/PARC2026/40_experiments/agent_cockpit/`へ保存します。
+現在のMVPでは、Dataset Manifestと選定Episodeの表示、変換済みRLDSのFront/Wrist画像・State・Action chunk読込、既存OpenVLAオフラインRuntimeによる推論、教師Actionとの誤差比較、Safety確認、Google Drive Trace保存まで実装しています。
+
+Traceは`MyDrive/PARC2026/40_experiments/agent_cockpit/`へ保存します。観測画像も各Step配下へPNGとしてコピーするため、一時的なGradio upload pathには依存しません。
 
 ## 事前CI Gate
 
@@ -72,13 +74,13 @@ Synthetic E2Eでは、Parquet・Front/Wrist MP4生成、TFDS/RLDS shard生成、
 - `submission/openvla_oft_offline/`: OpenVLA-OFT+提出用オフライン推論ランタイム
 - `training/openvla_oft_a100/`: Google Colab A100 40GB向け学習環境、RLDS変換・Batch互換検証
 - `src/data/`: Dataset棚卸し、Episode選定、Mini E2E、LeRobot→RLDS変換、Manifest生成・昇格
-- `src/agent_cockpit/`: Planner、Safety Validator、Evaluator、Trace保存、Agent Orchestrator
-- `frontend/gradio_app.py`: Colab上で起動する実験・Agent検証UI
+- `src/agent_cockpit/`: Dataset Explorer、OpenVLA Adapter、Planner、Safety Validator、Evaluator、Trace保存、Agent Orchestrator
+- `frontend/gradio_app.py`: Colab上で起動するRLDS・推論・Agent検証UI
 - `configs/agent_cockpit.example.yaml`: 自律レベル、Action制約、Drive保存先の設定例
 - `configs/models/`: Checkpointの必要ファイル・容量・提出対象契約
 - `notebooks/`: Scriptを順番に呼び出すColab薄型Notebook
 - `.github/workflows/`: Unit、契約、Synthetic RLDS E2Eの自動検証
-- `tests/`: 前処理、Action chunk、Dataset pipeline、RLDS契約、Checkpoint Manifest、Agent制約のテスト
+- `tests/`: 前処理、Action chunk、Dataset pipeline、RLDS契約、Checkpoint Manifest、Agent制約、Policy Adapterのテスト
 
 ## 予定構成
 
