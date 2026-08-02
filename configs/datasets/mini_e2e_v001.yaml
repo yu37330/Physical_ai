@@ -1,0 +1,31 @@
+schema_version: 1
+mini_dataset_id: parc_mini_e2e_v001
+parent_selection: artifacts/datasets/libero_plus_selection_v001.json
+selection:
+  instruction: null
+  train_episodes: 2
+  validation_episodes: 1
+  choose_instruction: first_sorted_task_with_required_splits
+purpose:
+  - validate_selected_payload_download
+  - validate_lerobot_to_tfds_rlds
+  - validate_source_rlds_parity
+  - validate_openvla_rlds_batch_transform
+  - validate_dataset_manifest_promotion
+execution_order:
+  - build_mini_selection
+  - download_selected_parquet_and_videos
+  - convert_to_tfds_rlds
+  - validate_source_parity
+  - patch_openvla_dataset_registry
+  - validate_rlds_batch_transform
+  - promote_dataset_manifest
+hard_gates:
+  train_episode_count: 2
+  validation_episode_count: 1
+  state_dim: 8
+  action_dim: 7
+  camera_count: 2
+  action_chunk_shape: [8, 7]
+  source_parity_required: true
+  openvla_compatibility_required: true
