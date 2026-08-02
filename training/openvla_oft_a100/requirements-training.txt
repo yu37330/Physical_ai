@@ -1,0 +1,18 @@
+# Training environment only. Git dependencies are intentionally allowed here.
+torch==2.2.0
+torchvision==0.17.0
+torchaudio==2.2.0
+accelerate>=0.25.0
+peft==0.11.1
+tokenizers==0.19.1
+timm==0.9.10
+sentencepiece==0.1.99
+diffusers==0.30.3
+tensorflow==2.15.0
+tensorflow-datasets==4.9.3
+tensorflow-graphics==2021.12.3
+dracus==0.8.0
+json-numpy
+jsonlines
+rich
+wandb

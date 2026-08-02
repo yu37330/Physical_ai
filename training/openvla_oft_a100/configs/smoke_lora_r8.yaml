@@ -1,0 +1,35 @@
+experiment:
+  name: openvla_oft_plus_smoke_lora_r8
+  purpose: Verify A100 40GB fine-tuning, checkpoint save, and reload
+
+model:
+  checkpoint: Sylvest/openvla-7b-oft-finetuned-libero-plus-mixdata
+  dtype: bfloat16
+  num_images_in_input: 2
+  use_proprio: true
+  use_l1_regression: true
+  use_diffusion: false
+  use_film: false
+  lora_rank: 8
+
+training:
+  batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-5
+  max_steps: 500
+  save_freq: 100
+  image_aug: true
+  gradient_checkpointing: true
+  seed: 42
+
+selection:
+  primary_metric: validation_success_rate
+  protect_metrics:
+    - libero_plus_light_success_rate
+    - libero_plus_background_success_rate
+    - normal_libero_replay_success_rate
+    - collision_rate
+
+paths:
+  data_root_dir: /content/drive/MyDrive/PARC2026/datasets/rlds
+  run_root_dir: /content/drive/MyDrive/PARC2026/experiments
