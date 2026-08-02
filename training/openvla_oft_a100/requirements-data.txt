@@ -6,9 +6,10 @@ opencv-python-headless==4.11.0.86
 
 # Keep the OpenVLA/OFT-tested TensorFlow/TFDS line for custom RLDS builders.
 # tensorflow-metadata 1.21 ships protobuf-6 generated code, while TensorFlow
-# 2.15 requires protobuf <5. Pin the compatible metadata/protobuf pair.
+# 2.15 requires protobuf <5. TF Metadata 1.15 requires protobuf <4.21 on
+# Python 3.10, so 3.20.3 is the common compatible version.
 tensorflow==2.15.1
 tensorflow-datasets==4.9.3
 tensorflow-metadata==1.15.0
-protobuf==4.25.3
+protobuf==3.20.3
 rlds==0.1.8
