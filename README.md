@@ -8,7 +8,7 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 - GitHubをコード・設定・履歴の正本とする
 - Google ColabをGPU学習・重い評価の実行環境とする
 - Google Driveをモデル、データ、ログ、提出物の保管先とする
-- GradioでColab上のRLDS確認、OpenVLA推論、Agent Action提案を実行できる検証UIを構築する
+- GradioでColab上のRLDS確認、OpenVLA推論、Agent Action提案、自律Replayを実行できる検証UIを構築する
 - 将来はReact/FastAPIで実験結果を比較・管理できる常設基盤へ拡張する
 - Markdown/JSONに実験知識を蓄積し、LLMが過去実験を参照して次の実験を提案できるようにする
 - 公式評価由来の情報を学習データや自動最適化へ流入させない
@@ -37,7 +37,7 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 → 02_dataset_prepare.ipynb
 → 03_stage_a_train.ipynb
 → 04_submission_validate.ipynb
-→ 05_agent_cockpit.ipynb（RLDS・推論・Agent検証）
+→ 05_agent_cockpit.ipynb（RLDS・推論・Agent・Replay検証）
 ```
 
 詳細は[`notebooks/README.md`](notebooks/README.md)を参照してください。
@@ -52,35 +52,41 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 - Dataset Explorer
 - Inference
 - Agent Cockpit
+- Autonomous Replay
 - Run Trace
 
 現在のMVPでは、Dataset Manifestと選定Episodeの表示、変換済みRLDSのFront/Wrist画像・State・Action chunk読込、既存OpenVLAオフラインRuntimeによる推論、教師Actionとの誤差比較、Safety確認、Google Drive Trace保存まで実装しています。
 
+Autonomous Replayでは、記録済みRLDS Episodeを順に観測し、各FrameでAIが次Actionを再計画します。Safety違反、Action誤差の連続超過、同一Action反復、最大Step、Episode終端を停止条件として記録します。これは予測Actionによって環境が変化する因果的シミュレーションではなく、逐次推論と停止制御を検証するオフラインReplayです。
+
 Traceは`MyDrive/PARC2026/40_experiments/agent_cockpit/`へ保存します。観測画像も各Step配下へPNGとしてコピーするため、一時的なGradio upload pathには依存しません。
 
-## 事前CI Gate
+## CI Gate
 
-次の2 JobはGitHub Actionsで通過実績があります。
+次の3 Jobで検証します。
 
 ```text
 unit-and-contracts
+frontend-smoke
 synthetic-rlds-e2e
 ```
 
-Synthetic E2Eでは、Parquet・Front/Wrist MP4生成、TFDS/RLDS shard生成、Train/Val読込、State/Action parity、画像方向保持までをCPUで検証します。
+- `unit-and-contracts`: Agent、Policy Adapter、Safety、Trace、自律Replay停止条件をCPUで検証
+- `frontend-smoke`: Gradio Blocksを依存関係込みで構築
+- `synthetic-rlds-e2e`: Parquet・Front/Wrist MP4生成、TFDS/RLDS shard生成、Train/Val読込、State/Action parity、画像方向保持、Dataset Explorer読込を検証
 
 ## 実装ディレクトリ
 
 - `submission/openvla_oft_offline/`: OpenVLA-OFT+提出用オフライン推論ランタイム
 - `training/openvla_oft_a100/`: Google Colab A100 40GB向け学習環境、RLDS変換・Batch互換検証
 - `src/data/`: Dataset棚卸し、Episode選定、Mini E2E、LeRobot→RLDS変換、Manifest生成・昇格
-- `src/agent_cockpit/`: Dataset Explorer、OpenVLA Adapter、Planner、Safety Validator、Evaluator、Trace保存、Agent Orchestrator
-- `frontend/gradio_app.py`: Colab上で起動するRLDS・推論・Agent検証UI
-- `configs/agent_cockpit.example.yaml`: 自律レベル、Action制約、Drive保存先の設定例
+- `src/agent_cockpit/`: Dataset Explorer、OpenVLA Adapter、Planner、Safety Validator、Evaluator、Trace保存、Agent Orchestrator、自律Replay
+- `frontend/gradio_app.py`: Colab上で起動するRLDS・推論・Agent・Replay検証UI
+- `configs/agent_cockpit.example.yaml`: 自律レベル、Replay停止条件、Action制約、Drive保存先の設定例
 - `configs/models/`: Checkpointの必要ファイル・容量・提出対象契約
 - `notebooks/`: Scriptを順番に呼び出すColab薄型Notebook
-- `.github/workflows/`: Unit、契約、Synthetic RLDS E2Eの自動検証
-- `tests/`: 前処理、Action chunk、Dataset pipeline、RLDS契約、Checkpoint Manifest、Agent制約、Policy Adapterのテスト
+- `.github/workflows/`: Unit、Frontend Smoke、Synthetic RLDS E2Eの自動検証
+- `tests/`: 前処理、Action chunk、Dataset pipeline、RLDS契約、Checkpoint Manifest、Agent制約、Policy Adapter、自律Replayのテスト
 
 ## 予定構成
 
@@ -113,8 +119,9 @@ Physical_ai/
 5. 各実験に`run_manifest.json`を残す
 6. 各データセットに`dataset_manifest.json`を残す
 7. 各モデルに`checkpoint_manifest.json`を残す
-8. Agentの各StepにObservation、Proposal、Safety、Execution、EvaluationのTraceを残す
-9. 公式評価の観測、Seed、非公開タスク情報は保存・学習利用しない
-10. 最終提出物とレポートの内容を一致させる
-11. Mini Datasetと全事前Gateを通過してから800 Episode変換とStage A学習へ進む
-12. 実機ExecutorはSafety制約と人の承認を実装するまで接続しない
+8. Agentの各StepにObservation、Proposal、Safety、Execution、Evaluation、Replay EvaluationのTraceを残す
+9. オフラインReplayと因果的Simulationを明確に区別する
+10. 公式評価の観測、Seed、非公開タスク情報は保存・学習利用しない
+11. 最終提出物とレポートの内容を一致させる
+12. Mini Datasetと全事前Gateを通過してから800 Episode変換とStage A学習へ進む
+13. 実機ExecutorはSafety制約、人の承認、緊急停止を実装するまで接続しない
