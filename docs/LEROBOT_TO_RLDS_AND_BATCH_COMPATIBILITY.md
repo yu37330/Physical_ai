@@ -7,9 +7,7 @@
 
 ## 1. 結論
 
-選択したLIBERO-plus 800 Episodeを、OpenVLA-OFTが標準利用するTFDS/RLDSへ変換し、`RLDSBatchTransform`と公式Collatorまで通して互換性を検証するパイプラインを実装した。
-
-変換・検証は次の順に行う。
+選択したLIBERO-plus 800 Episodeを、OpenVLA-OFTが利用するTFDS/RLDSへ変換し、`RLDSDataset`、`RLDSBatchTransform`、公式Collatorまで通して互換性を検証するパイプラインを実装した。
 
 ```text
 LeRobot v2.1 selected payload
@@ -21,9 +19,9 @@ TFDS GeneratorBasedBuilder
         ↓
 parc_libero_plus_selected/1.0.0
   ├─ train: 640 Episode
-  └─ validation: 160 Episode
+  └─ val:   160 Episode
         ↓
-OpenVLA-OFT OXE registry patch
+OpenVLA-OFT local builder / OXE registry patch
         ↓
 RLDSDataset
         ↓
@@ -36,35 +34,28 @@ Batch compatibility report
 Dataset Manifestをpayload_validatedへ昇格
 ```
 
-公開データを実際にダウンロードしていない現時点では、コード、契約、Synthetic unit testまでを準備済みである。800 Episodeの実変換、TFDS shard生成、OpenVLA-OFT実Batch検証は、データとA100環境を取得後に実行して確定する。
+公開データを実際にダウンロードしていない現時点では、変換コード、契約、合成データ向けUnit testまでを準備済みである。800 Episodeの実変換と実Checkpointを使ったBatch検証は、データ・GPU環境で実行して最終確定する。
 
 ## 2. 変換後RLDS契約
-
-### Episode構造
 
 ```text
 episode
 ├─ steps
-│  ├─ observation
-│  │  ├─ image: uint8 [256, 256, 3]
-│  │  ├─ wrist_image: uint8 [256, 256, 3]
-│  │  └─ state: float32 [8]
-│  ├─ action: float32 [7]
-│  ├─ language_instruction: string
-│  ├─ reward: float32
-│  ├─ discount: float32
-│  ├─ is_first: bool
-│  ├─ is_last: bool
-│  └─ is_terminal: bool
+│  ├─ observation.image          uint8 [256,256,3]
+│  ├─ observation.wrist_image    uint8 [256,256,3]
+│  ├─ observation.state          float32 [8]
+│  ├─ action                     float32 [7]
+│  ├─ language_instruction       string
+│  ├─ reward / discount
+│  └─ is_first / is_last / is_terminal
 └─ episode_metadata
    ├─ episode_id
    ├─ source_episode_index
-   ├─ suite
-   ├─ task
+   ├─ suite / task
    └─ source_parquet_sha256
 ```
 
-### State意味順序
+Stateの意味順序:
 
 ```text
 EEF position XYZ       3
@@ -73,83 +64,98 @@ Gripper qpos           2
 合計                    8
 ```
 
-### Action意味順序
+Actionの意味順序:
 
 ```text
-delta XYZ              3
-delta roll/pitch/yaw   3
-gripper                 1
+Delta XYZ              3
+Delta roll/pitch/yaw   3
+Gripper                 1
 合計                    7
 ```
 
-Action chunkはRLDSへ事前保存しない。OpenVLA-OFTのRLDS loaderが連続Stepから8×7 Chunkを作る。これにより、Chunk生成の意味を公式実装へ委ね、独自変換による時間方向のずれを避ける。
+Action chunkはRLDSへ事前保存しない。OpenVLA-OFTのTrajectory transformが連続Stepから8×7 Chunkを作る。
 
-## 3. 画像変換の責任分担
+## 3. TFDS Split
 
-画像の180度回転をConverterとOpenVLA transformの両方で行うと元に戻ってしまうため、責任を一か所へ固定する。
+Selection Manifest上のSplit名は`train`と`validation`である。一方、OpenVLA-OFTのRLDS loaderはValidationを`val`として読むため、変換時に次へ写像する。
 
-### v001の方針
+```text
+selection train       → TFDS train
+selection validation  → TFDS val
+```
 
-- LeRobot→RLDS Converter: RGB Decode、256×256統一のみ
-- OpenVLA OXE transform: Front/Wristを180度回転
-- RLDSDataset: モデル標準解像度へのResize・画像Augmentation
-- PARC 128×128情報損失の再現は、後続Dataset v002で比較実験する
+Custom TFDS builderは生成後のDirectoryから読み込む必要があるため、対象Datasetだけ`tfds.builder_from_directory()`を使うPatchを適用する。
 
-`--rotate-180`はConverterに残しているが、標準Workflowでは指定しない。使用時はOXE transform側の回転を無効化しなければならない。
+## 4. 画像方向
 
-## 4. No-op処理
+LeRobotのLIBERO Processorは、環境から得た画像をDataset規約へ合わせて180度回転して保存する。したがって、`Sylvest/libero_plus_lerobot`からRLDSへ変換するときは、画像方向をそのまま保持する。
 
-v001ではNo-op除去を行わない。
+v001の責任分担:
+
+- Converter: MP4 Decode、RGB化、256×256確認。回転しない
+- OpenVLA OXE transform: 回転しない
+- RLDSDataset: モデル標準画像変換
+- 実データGate: Source MP4 FrameとRLDS Raw Frameの向きを比較
+
+Converterには診断用`--rotate-180`を残すが、標準Workflowでは指定しない。
+
+## 5. State・Gripper Actionの公式互換処理
+
+OpenVLA-OFTの公式`libero_dataset_transform`と同じ処理を使う。
+
+### State
+
+```text
+EEF_state      = observation.state[:, :6]
+gripper_state  = observation.state[:, -2:]
+```
+
+OXE configの`state_obs_keys`は次とする。
+
+```text
+["EEF_state", "gripper_state"]
+```
+
+これを連結して8次元Proprioceptionを生成する。
+
+### Gripper Action
+
+SourceのGripper Actionは`-1=open, +1=close`である。公式処理と同じく、最後の1次元を0〜1へClipし、Invertして`+1=open, 0=close`へ変換する。
+
+```text
+absolute_action_mask      [F,F,F,F,F,F,T]
+action_normalization_mask [T,T,T,T,T,T,F]
+```
+
+連続6軸のみをNormalizationし、Gripperは絶対Actionとして扱う。
+
+## 6. No-op処理
+
+v001では独自No-op除去を行わない。
 
 理由:
 
-- LeRobot版LIBERO-plusがどの段階でNo-op処理されたかをEpisode単位Metadataだけでは断定できない
-- OpenVLAの公式modified LIBEROと同一のNo-op判定を再現せずに独自Thresholdを適用すると、Gripper保持や微小補正を誤って削除する可能性がある
-- Action Headを最小調整するStage Aでは、時間整合性を優先する
+- Source Datasetの作成段階でどのNo-op処理が行われたかを実Payloadで確認する必要がある
+- 独自Thresholdを追加すると、Gripper開閉・保持や微小補正を誤って削除する可能性がある
+- Stage Aでは時間方向の整合を優先する
 
-実データ比較でNo-op比率が問題になった場合だけ、公式`is_noop`実装と一致する処理をv002へ追加する。
-
-## 5. OpenVLA-OFTへの登録
-
-Pinned OpenVLA-OFT Repoへ次を追加するPatchを用意した。
-
-### Dataset config
+必要になった場合だけ、OpenVLA公式条件を再現する。
 
 ```text
-image primary: image
-image wrist: wrist_image
-state key: state
-state encoding: POS_EULER
-Action encoding: EEF_POS
-absolute action mask: [F,F,F,F,F,F,T]
-action normalization mask: [T,T,T,T,T,T,F]
+Norm(action[:6]) < 1e-4
+かつ
+現在のGripper Action == 前StepのGripper Action
 ```
 
-Gripper Actionは絶対値として扱い、連続6軸だけをAction Normalization対象にする。
+## 7. `RLDSBatchTransform`互換性Gate
 
-### Standardization transform
-
-- Front imageを180度回転
-- Wrist imageを180度回転
-- State、Action、Languageは変更しない
-
-### Mixture
-
-```text
-parc_stage_a_plus_only:
-  parc_libero_plus_selected = 1.0
-```
-
-通常LIBERO Replay 200 Episodeを混ぜる本番Mixtureは、Plus単体の互換性検証後に追加する。最初からMixすると、どちらのSourceに問題があるか判別しにくいためである。
-
-## 6. `RLDSBatchTransform`互換性Gate
-
-TrainとValidationからそれぞれ複数Sampleを取得し、公式Collatorまで通す。
+TrainとValから複数Sampleを取得し、公式Collatorまで通す。
 
 必須出力:
 
 ```text
 pixel_values
+pixel_values_wrist
 input_ids
 labels
 actions
@@ -160,33 +166,36 @@ proprio
 
 | 項目 | 条件 |
 |---|---|
-| Camera | 2画像が`pixel_values`へ入る |
-| State | 最終次元8 |
-| Action | 最終2次元が8×7 |
-| Token | `input_ids`と`labels`が生成される |
-| 数値 | Action・ProprioにNaN/Infなし |
-| Split | TrainとValidationの両方を読める |
-| Collator | Batch size 1で正常にCollateできる |
+| Front | `pixel_values`が存在し有限 |
+| Wrist | `pixel_values_wrist`が存在し有限 |
+| State | `proprio`最終次元8 |
+| Action | `actions`最終2次元8×7 |
+| Language | `input_ids`と`labels`生成 |
+| Split | TrainとValを読める |
+| Collator | Batch size 1で成功 |
+| Numerical | Action・ProprioにNaN/Infなし |
 
-検証結果は`openvla_rlds_compatibility.json`へ保存する。
+結果は`openvla_rlds_compatibility.json`へ保存する。
 
-## 7. Dataset Manifest更新
+## 8. Dataset Manifest更新
 
-Metadata選定段階では次のStatusである。
+Metadata選定段階:
 
 ```text
-metadata_selected_pending_payload_validation
+quality.status = metadata_selected_pending_payload_validation
 ```
 
-以下が全て成功した場合のみ、Manifestを更新する。
+次を全て満たした場合のみ昇格する。
 
 1. 800 EpisodeのPayloadがそろう
 2. State 8D、Action 7D、2 Cameraが全Episodeで成立
 3. TFDS/RLDS変換完了
-4. Train/Validationの両Splitが読める
+4. Train / Valの両Splitを読める
 5. `RLDSBatchTransform`成功
-6. Action chunk 8×7成立
-7. OpenVLA Collator成功
+6. Front / Wrist Tensorを別々に生成
+7. Action chunk 8×7成立
+8. OpenVLA Collator成功
+9. NaN / Infなし
 
 更新後:
 
@@ -195,9 +204,7 @@ quality.status = payload_validated
 structure.format = tfds_rlds
 ```
 
-Transformation履歴には、Selection SHA256、Converter version、画像回転の実施場所、OpenVLA Batch Transform契約を残す。
-
-## 8. 実装ファイル
+## 9. 実装ファイル
 
 ```text
 configs/datasets/lerobot_to_rlds_v001.yaml
@@ -211,14 +218,14 @@ training/openvla_oft_a100/scripts/prepare_stage_a_rlds.sh
 tests/test_rlds_contract.py
 ```
 
-## 9. 実行方法
+## 10. 実行方法
 
 ```bash
 export PROJECT_ROOT=/content/Physical_ai
 export OPENVLA_ROOT=/content/openvla-oft
 export SOURCE_ROOT=/content/data/libero_plus_selected
 export SELECTION_FILE=/content/drive/MyDrive/PARC2026/artifacts/libero_plus_selection_v001.json
-export TFDS_ROOT=/content/drive/MyDrive/PARC2026/datasets/rlds
+export TFDS_ROOT=/content/work/rlds
 export BASE_CHECKPOINT=/content/drive/MyDrive/PARC2026/models/openvla_oft_plus_base
 export MANIFEST_FILE=/content/drive/MyDrive/PARC2026/artifacts/dataset_manifest.json
 export ARTIFACT_ROOT=/content/drive/MyDrive/PARC2026/artifacts/parc_stage_a_balanced_v001
@@ -234,15 +241,15 @@ openvla_rlds_compatibility.json
 dataset_manifest.payload_validated.json
 ```
 
-## 10. 実データ実行時の注意
+## 11. 実データ実行時の注意
 
-- Google Drive上でTFRecordを直接大量生成するとI/Oが遅くなる可能性がある。`/content/work`へ生成して完成後にDriveへCopyする方が安全
-- Video DecodeはEpisode単位で行い、一度に800 EpisodeをMemoryへ保持しない
-- TFDS builderの途中失敗に備えて十分なローカルDiskを確保する
-- Converter、OpenVLA Repo、Source Dataset、Selectionの各Revision/SHA256をRun Manifestへ記録する
-- 変換後のDataset statisticsは、追加学習Checkpointと一緒に固定する
-- 実データで問題が出た場合、まず1 Task・Train 2 Episode・Validation 1 EpisodeのMini Datasetで原因を切り分ける
+- TFRecordは`/content/work`へ生成し、完成・検証後にDriveへコピーする
+- 一度に800 EpisodeをRAMへ保持せず、Episode単位でDecodeする
+- 最初は1 Task・Train 2 Episode・Val 1 EpisodeのMini Datasetで確認する
+- Source MP4とRLDS Raw Frameを目視比較する
+- Dataset statisticsとSelection SHA256をCheckpointと一緒に固定する
+- Converter、OpenVLA Repo、Dataset、CheckpointのRevisionをRun Manifestへ残す
 
-## 11. 次の判断
+## 12. 次の判断
 
-このGateを通過した後に、通常LIBERO Replay 200 Episodeを同一RLDS Mixへ追加する。Plus 800とReplay 200を混ぜた最終Stage A Datasetは、Source別のDataset statisticsとSampling weightを明示し、Plus単体との比較を行ってから学習に使用する。
+このGateを通過した後に、通常LIBERO Replay 200 Episodeを混合する。Plus 800単体とPlus 800＋Replay 200を比較し、通常LIBERO能力の保持とLIBERO-plus適応のバランスを確認してから本学習へ進む。
