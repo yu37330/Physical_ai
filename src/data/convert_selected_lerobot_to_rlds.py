@@ -135,17 +135,19 @@ def _build_tfds(
     rotate_180: bool,
 ) -> dict[str, Any]:
     try:
-        import tensorflow as tf
         import tensorflow_datasets as tfds
     except ImportError as exc:
         raise RuntimeError("tensorflow and tensorflow-datasets are required for RLDS conversion") from exc
 
-    episodes_by_split: dict[str, list[dict[str, Any]]] = {"train": [], "validation": []}
+    episodes_by_split: dict[str, list[dict[str, Any]]] = {"train": [], "val": []}
     for row in selection["episodes"]:
-        split = str(row["split"])
-        if split not in episodes_by_split:
-            raise ValueError(f"Unsupported split {split!r}; expected train or validation")
-        episodes_by_split[split].append(row)
+        source_split = str(row["split"])
+        tfds_split = "val" if source_split == "validation" else source_split
+        if tfds_split not in episodes_by_split:
+            raise ValueError(f"Unsupported split {source_split!r}; expected train or validation")
+        episodes_by_split[tfds_split].append(row)
+
+    generated_frame_counts = {"train": 0, "val": 0}
 
     class ParcLiberoPlusSelected(tfds.core.GeneratorBasedBuilder):
         VERSION = tfds.core.Version(DATASET_VERSION)
@@ -191,8 +193,8 @@ def _build_tfds(
         def _split_generators(self, dl_manager: tfds.download.DownloadManager):
             del dl_manager
             return {
-                tfds.Split.TRAIN: self._generate_examples("train"),
-                tfds.Split.VALIDATION: self._generate_examples("validation"),
+                "train": self._generate_examples("train"),
+                "val": self._generate_examples("val"),
             }
 
         def _generate_examples(self, split: str) -> Iterator[tuple[str, dict[str, Any]]]:
@@ -207,7 +209,8 @@ def _build_tfds(
                     image_size=image_size,
                     rotate_180=rotate_180,
                 )
-                payload.pop("contract")
+                contract = payload.pop("contract")
+                generated_frame_counts[split] += int(contract["frame_count"])
                 key = payload["episode_metadata"]["episode_id"]
                 yield key, payload
 
@@ -221,11 +224,15 @@ def _build_tfds(
         "data_dir": str(builder.data_dir),
         "source": selection.get("source", {}),
         "selection_sha256": None,
-        "episode_counts": {split: len(rows) for split, rows in episodes_by_split.items()},
-        "frame_counts": {
-            split: int(builder.info.splits[split].num_examples) if split in builder.info.splits else None
-            for split in ("train", "validation")
+        "episode_counts": {
+            "train": len(episodes_by_split["train"]),
+            "validation": len(episodes_by_split["val"]),
         },
+        "frame_counts": {
+            "train": generated_frame_counts["train"],
+            "validation": generated_frame_counts["val"],
+        },
+        "tfds_splits": ["train", "val"],
         "contract": {
             "state_dim": STATE_DIM,
             "action_dim": ACTION_DIM,
