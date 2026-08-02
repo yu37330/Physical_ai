@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.agent_cockpit.dataset_explorer import RLDSEpisodeReader
 from src.data.convert_selected_lerobot_to_rlds import _build_tfds
 from src.data.generate_synthetic_lerobot_fixture import generate_fixture
 from src.data.validate_rlds_source_parity import validate_episode
@@ -59,6 +60,17 @@ def test_synthetic_lerobot_to_rlds_and_source_parity(tmp_path: Path) -> None:
             assert parity["action_max_abs_error"] <= 1e-6
             assert parity["front"]["orientation_preserved"] is True
             assert parity["wrist"]["orientation_preserved"] is True
+
+    reader = RLDSEpisodeReader(report["data_dir"])
+    assert reader.available_splits() == ["train", "val"]
+    sample = reader.read_sample(split="train", episode_offset=0, frame_id=0)
+    assert sample.front_image.shape == (32, 32, 3)
+    assert sample.wrist_image.shape == (32, 32, 3)
+    assert sample.state.shape == (8,)
+    assert sample.action.shape == (7,)
+    assert sample.action_chunk.shape == (8, 7)
+    assert sample.instruction
+    assert sample.summary()["episode_frame_count"] == 8
 
     persisted_selection = json.loads(selection_path.read_text(encoding="utf-8"))
     assert persisted_selection["counts"]["total"] == 3
