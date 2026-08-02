@@ -2,7 +2,7 @@
 
 ## 目的
 
-この改修は、Google ColabをGPU実行環境、Google Driveを永続ストレージ、GitHubをコード・設定の正本として、VLAの観測、Action chunk推論、安全確認、実行後評価、次Action提案を一つのUIから追跡できるようにするものです。既存の学習、LeRobot→RLDS変換、提出用オフライン推論ランタイムは正本として維持し、Agent Cockpitはそれらを呼び出す独立した検証レイヤーとして実装します。
+この改修は、Google ColabをGPU実行環境、Google Driveを永続ストレージ、GitHubをコード・設定の正本として、VLAの観測、Action chunk推論、安全確認、評価、次Action提案、再計画を一つのUIから追跡できるようにするものです。既存の学習、LeRobot→RLDS変換、提出用オフライン推論ランタイムは正本として維持し、Agent Cockpitはそれらを呼び出す独立した検証レイヤーとして実装します。
 
 ## 現在の実装範囲
 
@@ -18,13 +18,15 @@
 - OpenVLA Action chunk先頭を次Actionとして提案するPlanner
 - Safety Validator、承認Gate、Evaluator、Google Drive Trace
 - 観測画像をStep配下へPNGとして永続保存
+- RLDS Episode上の`Observe → Plan → Evaluate → Replan`自律Replay
+- Safety違反、連続Action誤差、同一Action反復、最大Step、Episode終端による停止
+- Replay単位の平均Action MAE、一致率、安全通過率、推論時間、停止理由の集計
 
 未接続:
 
-- Simulation Executor
+- 予測Actionに応じて環境状態が変化するSimulation Executor
 - 実機Executor
 - 画像ベースの成功判定
-- 複数Stepを自動反復するAgent Loop
 - OpenVLAの校正済みConfidence
 
 ## 画面構成
@@ -67,9 +69,37 @@ Plannerは次から選択できます。
 
 OpenVLA PlannerのAction Proposalには、先頭Actionだけでなく、Action chunk全体、Shape、推論時間、Checkpoint pathをMetadataとして残します。
 
+### Autonomous Replay
+
+記録済みRLDS Episodeを順番に読み、各FrameでPlannerを再実行します。OpenVLAを選択した場合は、各観測画像とStateからAction chunkを再生成します。
+
+```text
+RLDS Frame t
+  ↓
+OpenVLA / Rule-based Planner
+  ↓
+Safety Validator
+  ↓
+教師Actionとの誤差評価
+  ↓
+停止条件の確認
+  ↓
+RLDS Frame t+1で再計画
+```
+
+停止条件:
+
+- Safety制約違反
+- Action MAEが閾値を連続して超過
+- 同一Actionの反復
+- 最大Step到達
+- Episode終端
+
+重要な制約として、次Frameは記録済みRLDS軌跡から取得します。したがって、予測Actionを環境に適用した後の状態遷移を再現する因果的シミュレーションではありません。これはPolicyの逐次推論、停止制御、Trace、教師Actionとの差を確認するためのオフラインReplayです。
+
 ### Run Trace
 
-各Stepの観測、提案、安全判定、実行状態、評価と画像をGoogle Driveへ保存します。
+各Stepの観測、提案、安全判定、実行状態、評価、Replay評価と画像をGoogle Driveへ保存します。
 
 ## Agentの責務分離
 
@@ -92,14 +122,14 @@ Safety Validator
        ↓
 Human Approval / Constrained Executor
        ↓
-Evaluator
+Evaluator / Replay Evaluator
        ↓
 Google Drive Trace
        ↓
 Replan
 ```
 
-`AgentOrchestrator`はPlannerをProtocol化しており、Rule-basedとOpenVLAを同じ`propose(observation, goal)`契約で差し替えます。
+`AgentOrchestrator`はPlannerをProtocol化しており、Rule-basedとOpenVLAを同じ`propose(observation, goal)`契約で差し替えます。`AutonomousReplayRunner`はこのOrchestratorを各RLDS Frameで反復呼び出しします。
 
 ## 画像方向の扱い
 
@@ -134,7 +164,7 @@ from frontend.gradio_app import build_app
 build_app().launch(share=True, debug=True)
 ```
 
-OpenVLA推論を使う場合は、`01_model_feasibility.ipynb`で確認した依存環境とCheckpointを利用してください。Dataset ExplorerとRule-based PlannerはGPUモデルをロードせずに確認できます。
+OpenVLA推論を使う場合は、`01_model_feasibility.ipynb`で確認した依存環境とCheckpointを利用してください。Dataset Explorer、Rule-based Planner、自律Replayの制御確認はGPUモデルをロードせずに実行できます。
 
 ## Google Driveの推奨配置
 
@@ -153,15 +183,16 @@ MyDrive/PARC2026/
     └── agent_cockpit/
 ```
 
-Dataset Explorerの`TFDS Builder directory`には、変換レポートの`data_dir`、または`dataset_info.json`が存在するBuilder directoryを指定します。
+Dataset ExplorerとAutonomous Replayの`TFDS Builder directory`には、変換レポートの`data_dir`、または`dataset_info.json`が存在するBuilder directoryを指定します。
 
 ## Trace保存先
 
 ```text
 MyDrive/PARC2026/40_experiments/agent_cockpit/
-└── agent_YYYYMMDD_HHMMSS/
+└── agent_YYYYMMDD_HHMMSS_replay_HHMMSS_xxxxxx/
     ├── run_manifest.json
     ├── timeline.jsonl
+    ├── autonomous_replay_summary.json
     └── steps/
         └── step_0000/
             ├── front_image.png
@@ -170,7 +201,8 @@ MyDrive/PARC2026/40_experiments/agent_cockpit/
             ├── proposal.json
             ├── safety.json
             ├── execution.json
-            └── evaluation.json
+            ├── evaluation.json
+            └── replay_evaluation.json
 ```
 
 Dataset Explorer Sampleと手動アップロード画像のどちらも、Agent Step実行時にRun配下へコピーします。Traceが一時的なGradio upload pathへ依存しないようにしています。
@@ -182,7 +214,7 @@ Dataset Explorer Sampleと手動アップロード画像のどちらも、Agent 
 - `approval`: 人の承認後だけExecutorへ渡す
 - `constrained_auto`: Safety制約を通過したActionのみExecutorへ渡す
 
-現段階の標準は`propose`です。実機Executorは未接続であり、`approval`または`constrained_auto`を選んでも、`executor_not_configured`として停止します。
+現段階の標準は`propose`です。実機Executorは未接続であり、`approval`または`constrained_auto`を選んでも、`executor_not_configured`として停止します。Autonomous Replayも実行系には接続せず、各FrameのAction提案と評価だけを反復します。
 
 ## OpenVLA Scoreと不確実性
 
@@ -190,11 +222,11 @@ Dataset Explorer Sampleと手動アップロード画像のどちらも、Agent 
 
 ## 次の実装
 
-1. Simulation Executorを接続する
-2. `Observe → Plan → Act → Evaluate → Replan`の複数Step Loopを追加する
-3. 最大Step、同一Action反復、停滞、Safety違反による停止条件を実装する
-4. State差分だけでなく画像・物体位置を使うEvaluatorを追加する
-5. Run Trace Timelineと失敗分析をUIへ表示する
-6. 複数CheckpointのAction chunk・成功率・推論時間を比較する
+1. LIBEROまたは別のSimulation Executorを接続する
+2. 予測Actionに基づく因果的な状態遷移で閉ループ評価する
+3. State差分だけでなく画像・物体位置を使うEvaluatorを追加する
+4. Run Trace Timelineと失敗分析をUIへ表示する
+5. 複数CheckpointのAction chunk・成功率・推論時間を比較する
+6. 実機接続前にWorkspace制約、衝突検知、緊急停止を追加する
 
 公式評価由来の観測、Seed、非公開タスク情報はTraceへ保存せず、学習や自動最適化にも利用しません。
