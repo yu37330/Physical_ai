@@ -22,8 +22,22 @@ def update_manifest(
     if compatibility.get("status") != "pass":
         raise ValueError("Compatibility report did not pass")
 
+    required_checks = (
+        "rlds_dataset_constructed",
+        "rlds_batch_transform_passed",
+        "collator_passed",
+        "front_and_wrist_tensors_present",
+        "finite_action_and_proprio",
+        "action_chunk_shape_passed",
+    )
+    failed = [name for name in required_checks if not compatibility.get("checks", {}).get(name)]
+    if failed:
+        raise ValueError(f"Compatibility report has failed or missing checks: {failed}")
+
     manifest["structure"]["format"] = "tfds_rlds"
     manifest["structure"]["episode_count"] = sum(conversion["episode_counts"].values())
+    if conversion.get("frame_counts"):
+        manifest["structure"]["frame_count"] = sum(conversion["frame_counts"].values())
 
     _upsert_transformation(
         manifest["transformations"],
@@ -37,6 +51,7 @@ def update_manifest(
                 "state_dim": conversion["contract"]["state_dim"],
                 "action_dim": conversion["contract"]["action_dim"],
                 "image_size": conversion["contract"]["image_size"],
+                "tfds_splits": conversion.get("tfds_splits", ["train", "val"]),
                 "rotate_180_during_conversion": conversion["contract"]["rotate_180_during_conversion"],
             },
         },
@@ -58,6 +73,7 @@ def update_manifest(
             "rlds_dataset_constructed": compatibility["checks"]["rlds_dataset_constructed"],
             "rlds_batch_transform_passed": compatibility["checks"]["rlds_batch_transform_passed"],
             "openvla_collator_passed": compatibility["checks"]["collator_passed"],
+            "front_and_wrist_tensors_present": compatibility["checks"]["front_and_wrist_tensors_present"],
             "action_chunk_shape_passed": compatibility["checks"]["action_chunk_shape_passed"],
             "finite_action_and_proprio": compatibility["checks"]["finite_action_and_proprio"],
         }
