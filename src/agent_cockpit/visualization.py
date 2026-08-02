@@ -1,4 +1,4 @@
-"""Agent CockpitのAction chunk可視化。"""
+"""Agent CockpitのAction・Replay可視化。"""
 
 from __future__ import annotations
 
@@ -65,5 +65,29 @@ def action_chunk_figure(predicted: Any, target: Any | None = None) -> Any:
     axis.set_title("Predicted / target action chunk")
     axis.grid(True, alpha=0.25)
     axis.legend(ncol=2, fontsize=8)
+    figure.tight_layout()
+    return figure
+
+
+def replay_metrics_figure(steps: list[dict[str, Any]], threshold: float) -> Any:
+    """自律Replay中のAction MAEと閾値を時系列表示する。"""
+
+    import matplotlib.pyplot as plt
+
+    figure, axis = plt.subplots(figsize=(10, 4))
+    if not steps:
+        axis.text(0.5, 0.5, "No replay steps", ha="center", va="center")
+        axis.set_axis_off()
+        return figure
+
+    frame_ids = [int(row["frame_id"]) for row in steps]
+    action_mae = [float(row["action_mae"]) for row in steps]
+    axis.plot(frame_ids, action_mae, marker="o", label="Action MAE")
+    axis.axhline(float(threshold), linestyle="--", label="Stop threshold")
+    axis.set_xlabel("RLDS frame")
+    axis.set_ylabel("Mean absolute error")
+    axis.set_title("Autonomous replay action error")
+    axis.grid(True, alpha=0.25)
+    axis.legend()
     figure.tight_layout()
     return figure
