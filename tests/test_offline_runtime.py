@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from submission.openvla_oft_offline.runtime.action_postprocess import ActionChunkBuffer
+from submission.openvla_oft_offline.runtime.action_postprocess import (
+    ActionChunkBuffer,
+    finalize_action,
+)
 from submission.openvla_oft_offline.runtime.preprocessing import (
     build_policy_input,
     quaternion_xyzw_to_axis_angle,
@@ -33,3 +36,10 @@ def test_action_chunk_buffer() -> None:
     chunk = np.arange(56, dtype=np.float32).reshape(8, 7)
     buffer.load(chunk)
     np.testing.assert_array_equal(buffer.pop(), chunk[0])
+
+
+def test_gripper_postprocess_matches_libero_convention() -> None:
+    action = np.zeros(7, dtype=np.float32)
+    action[-1] = 1.0
+    result = finalize_action(action)
+    assert result[-1] == -1.0

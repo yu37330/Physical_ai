@@ -1,6 +1,6 @@
 # Physical AI / PARC2026
 
-P​ARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive成果物管理、ローカル評価、提出物作成、実験知識蓄積のための個人開発リポジトリです。
+PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive成果物管理、ローカル評価、提出物作成、実験知識蓄積のための個人開発リポジトリです。
 
 ## 目的
 
@@ -15,10 +15,18 @@ P​ARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Dr
 ## ドキュメント
 
 - [基盤構想](docs/PLATFORM_ARCHITECTURE.md)
-- [モデル対応方針](docs/MODEL_STRATEGY.md)
+- [モデル選定・最小調整方針](docs/MODEL_STRATEGY.md)
+- [OpenVLA-OFT+の依存関係・オフライン推論成立性](docs/OPENVLA_OFFLINE_RUNTIME_ASSESSMENT.md)
+- [オフライン推論・学習環境の次の実行手順](docs/OFFLINE_AND_TRAINING_NEXT_STEPS.md)
 - [運営Repo調査結果](docs/OFFICIAL_REPOSITORY_NOTES.md)
 - [提出・禁止事項チェック](docs/COMPLIANCE_AND_SUBMISSION.md)
 - [提出までの実行計画](docs/DELIVERY_PLAN.md)
+
+## 実装ディレクトリ
+
+- `submission/openvla_oft_offline/`: OpenVLA-OFT+提出用オフライン推論ランタイム
+- `training/openvla_oft_a100/`: Google Colab A100 40GB向け学習環境
+- `tests/`: 前処理・Action chunk・依存境界のテスト
 
 ## 予定構成
 
@@ -27,18 +35,13 @@ Physical_ai/
 ├── docs/
 ├── official_reference/
 ├── configs/
-│   ├── datasets/
-│   ├── experiments/
-│   └── evaluation/
 ├── schemas/
 ├── notebooks/
 ├── src/
-│   ├── data/
-│   ├── training/
-│   ├── policy/
-│   ├── evaluation/
-│   └── reporting/
 ├── submission/
+│   └── openvla_oft_offline/
+├── training/
+│   └── openvla_oft_a100/
 ├── frontend/
 ├── backend/
 └── tests/

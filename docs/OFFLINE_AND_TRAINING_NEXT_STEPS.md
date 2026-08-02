@@ -1,28 +1,60 @@
 # オフライン推論・学習環境 次の実行手順
 
+## 実装済み
+
+- PARC公式Policy Serverのシリアライゼーション仕様へ整合
+- 完全ローカルCheckpoint Loader
+- Sylvest版Checkpoint IDのハードコード回避
+- Transformers 4.40.1用双方向SDPA Attention Patch
+- 2画像＋8次元Proprioception入力
+- Action Head、Proprio Projectorのローカルロード
+- 8×7 Action chunk cache
+- LIBERO公式と同じGripper後処理
+- OpenVLA-OFT Repoの固定Commit Checkout
+- 既存Action Head・Proprio Projectorを引き継ぐ学習Patch
+- Model revision記録付きDownloader
+
 ## 明日最初に行うこと
 
-### 1. A100 40GBを確認
+### 1. リポジトリを取得
+
+```bash
+git clone -b feat/parc2026-foundation https://github.com/yu37330/Physical_ai.git
+cd Physical_ai
+```
+
+### 2. A100 40GBを確認
 
 ```bash
 nvidia-smi
 ```
 
-A100 40GB以外の場合は学習設定を変更する。
-
-### 2. 学習環境構築
+### 3. 学習環境を構築
 
 ```bash
+export PROJECT_ROOT=/content/Physical_ai
 bash training/openvla_oft_a100/scripts/bootstrap_colab.sh
 ```
 
-### 3. CheckpointをGoogle Driveへ保存
+### 4. Base CheckpointをDriveへ固定保存
 
-Colab学習用にはHFから取得してよい。提出物では外部通信しない。
+```bash
+python training/openvla_oft_a100/scripts/download_base_checkpoint.py \
+  --output /content/drive/MyDrive/PARC2026/models/openvla_oft_plus_base
+```
 
-### 4. 公式Fork基準出力を保存
+`model_source_manifest.json`へ解決済みRevisionを保存する。
 
-固定した2画像、Proprio、Instructionを用意し、以下を保存する。
+### 5. 提出用Prismaticコードを準備
+
+```bash
+export OPENVLA_OFT_SOURCE=/content/openvla-oft
+bash submission/openvla_oft_offline/scripts/prepare_vendor.sh
+```
+
+### 6. 公式Fork基準出力を保存
+
+固定した画像、Proprioception、Instructionで以下を保存する。
 
 - Action chunk
 - Peak VRAM
@@ -32,27 +64,29 @@ Colab学習用にはHFから取得してよい。提出物では外部通信し�
 - Package versions
 - Git commit
 
-### 5. Offline runtimeとのParity
-
-同じ入力を`submission/openvla_oft_offline`へ与える。
-
-合格条件:
-
-- Action shape `(8, 7)`
-- NaN / Infなし
-- `max_abs_diff <= 1e-4`を初期目標
-- 差がある場合はAttention Mask、画像処理、Normalizationを順に確認
-
-### 6. Smoke Fine-tuning
+### 7. Offline runtimeとのParity
 
 ```bash
+python submission/openvla_oft_offline/tools/compare_action_chunks.py \
+  official_fork_actions.npy offline_runtime_actions.npy
+```
+
+最初はAttention差分だけを確認するため、公式側で前処理済み画像を保存して同じ画像を使う。画像前処理を含むEnd-to-End比較は別に実施する。
+
+### 8. Smoke Fine-tuning
+
+```bash
+cd /content/openvla-oft
 export DATA_ROOT_DIR=/content/drive/MyDrive/PARC2026/datasets/rlds
 export RUN_ROOT_DIR=/content/drive/MyDrive/PARC2026/experiments
 export DATASET_NAME=<prepared_dataset_name>
-bash training/openvla_oft_a100/scripts/train_smoke.sh
+export CHECKPOINT_DIR=/content/drive/MyDrive/PARC2026/models/openvla_oft_plus_base
+bash /content/Physical_ai/training/openvla_oft_a100/scripts/train_smoke.sh
 ```
 
-### 7. Go / No-Go
+既存Action HeadとProprio Projectorを引き継がずにランダム初期化すると素の性能を失うため、`component_checkpoint_dir`を必ず指定する。
+
+## Go / No-Go
 
 GO:
 
@@ -61,6 +95,7 @@ GO:
 - Offline runtime parity合格
 - L4 24GBでPeak VRAM 22GB未満
 - 最大推論8秒未満
+- ZIP 20GB未満
 
 No-Go:
 

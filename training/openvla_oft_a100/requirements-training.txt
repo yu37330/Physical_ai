@@ -1,4 +1,4 @@
-# Training environment only. Git dependencies are intentionally allowed here.
+# Training environment only. Git dependencies are installed from the pinned source repo.
 torch==2.2.0
 torchvision==0.17.0
 torchaudio==2.2.0
@@ -11,7 +11,7 @@ diffusers==0.30.3
 tensorflow==2.15.0
 tensorflow-datasets==4.9.3
 tensorflow-graphics==2021.12.3
-dracus==0.8.0
+draccus==0.8.0
 json-numpy
 jsonlines
 rich

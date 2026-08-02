@@ -31,8 +31,12 @@ class ActionChunkBuffer:
         return not self._buffer
 
 
-def finalize_action(action: np.ndarray, clip: float = 1.0) -> np.ndarray:
-    result = np.asarray(action, dtype=np.float32).reshape(7)
+def finalize_action(action: np.ndarray) -> np.ndarray:
+    """Apply the same LIBERO gripper conversion as the official OpenVLA-OFT evaluator."""
+    result = np.asarray(action, dtype=np.float32).reshape(7).copy()
     if not np.isfinite(result).all():
         raise ValueError("Action contains NaN or Inf")
-    return np.clip(result, -clip, clip).astype(np.float32, copy=False)
+    result[-1] = 2.0 * result[-1] - 1.0
+    result[-1] = np.sign(result[-1])
+    result[-1] *= -1.0
+    return result.astype(np.float32, copy=False)

@@ -19,7 +19,6 @@ def quaternion_xyzw_to_axis_angle(quaternion: np.ndarray) -> np.ndarray:
     quaternion = np.asarray(quaternion, dtype=np.float64)
     if quaternion.shape != (4,):
         raise ValueError(f"Quaternion must have shape (4,), got {quaternion.shape}")
-
     norm = float(np.linalg.norm(quaternion))
     if norm < 1e-12:
         return np.zeros(3, dtype=np.float32)
@@ -37,22 +36,23 @@ def quaternion_xyzw_to_axis_angle(quaternion: np.ndarray) -> np.ndarray:
     return (axis * angle).astype(np.float32)
 
 
-def center_crop_resize(image: np.ndarray, crop_area: float = 0.9, size: int = 224) -> Image.Image:
+def resize_then_center_crop(image: np.ndarray, size: int = 224, crop_area: float = 0.9) -> Image.Image:
+    """Approximate the official TF Lanczos resize + 90% center-crop pipeline using PIL."""
     array = np.asarray(image)
     if array.ndim != 3 or array.shape[2] != 3:
         raise ValueError(f"Expected HxWx3 image, got {array.shape}")
     if array.dtype != np.uint8:
         array = np.clip(array, 0, 255).astype(np.uint8)
 
-    pil = Image.fromarray(array, mode="RGB")
-    width, height = pil.size
+    pil = Image.fromarray(array, mode="RGB").resize((size, size), Image.Resampling.LANCZOS)
     scale = math.sqrt(crop_area)
-    crop_width = max(1, int(round(width * scale)))
-    crop_height = max(1, int(round(height * scale)))
-    left = (width - crop_width) // 2
-    top = (height - crop_height) // 2
-    pil = pil.crop((left, top, left + crop_width, top + crop_height))
-    return pil.resize((size, size), resample=Image.Resampling.LANCZOS)
+    crop_width = max(1, int(round(size * scale)))
+    crop_height = max(1, int(round(size * scale)))
+    left = (size - crop_width) // 2
+    top = (size - crop_height) // 2
+    return pil.crop((left, top, left + crop_width, top + crop_height)).resize(
+        (size, size), Image.Resampling.BILINEAR
+    )
 
 
 def build_policy_input(observation: dict[str, np.ndarray], instruction: str) -> PolicyInput:
@@ -75,8 +75,8 @@ def build_policy_input(observation: dict[str, np.ndarray], instruction: str) -> 
     proprio = np.concatenate((eef_pos, axis_angle, gripper)).astype(np.float32)
 
     return PolicyInput(
-        full_image=center_crop_resize(observation["agentview_image"]),
-        wrist_image=center_crop_resize(observation["robot0_eye_in_hand_image"]),
+        full_image=resize_then_center_crop(observation["agentview_image"]),
+        wrist_image=resize_then_center_crop(observation["robot0_eye_in_hand_image"]),
         proprio=proprio,
         instruction=str(instruction),
     )
