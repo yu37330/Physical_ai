@@ -1,0 +1,92 @@
+schema_version: 1
+sources:
+  - source_id: sylvest_libero_plus_lerobot
+    role: primary_episode_selective_source
+    repo_id: Sylvest/libero_plus_lerobot
+    repo_type: dataset
+    revision: 22c57433fef692b5b9ecc0795344daac7fa867a5
+    license: mit
+    format: lerobot_v2_1
+    total_episodes: 14347
+    total_frames: 2238036
+    total_tasks: 40
+    fps: 20
+    robot_type: panda
+    image_keys:
+      - observation.images.front
+      - observation.images.wrist
+    image_shape: [256, 256, 3]
+    state_key: observation.state
+    state_dim: 8
+    action_key: action
+    action_dim: 7
+    storage_layout: per_episode
+    episode_metadata_path: meta/episodes.jsonl
+    task_metadata_path: meta/tasks.jsonl
+    selection_notes:
+      - Per-episode parquet and video paths allow downloading only selected episodes.
+      - Public metadata exposes task and length but does not expose perturbation category per episode.
+      - Perturbation labels must remain unknown unless recovered from an authoritative source path or generation record.
+
+  - source_id: lerobot_libero_plus_official
+    role: competition_notebook_reference
+    repo_id: lerobot/libero_plus
+    repo_type: dataset
+    revision: f3f49f426d75030177b18778374005bc12ccd588
+    license: unknown_dataset_card_missing
+    format: lerobot_v3
+    total_episodes: 14347
+    total_frames: 2238036
+    total_tasks: 40
+    fps: 20
+    robot_type: panda
+    image_keys:
+      - observation.images.front
+      - observation.images.wrist
+    image_shape: [256, 256, 3]
+    state_key: observation.state
+    state_dim: 8
+    action_key: action
+    action_dim: 7
+    storage_layout: chunked
+    episode_metadata_path: meta/episodes/chunk-*/file-*.parquet
+    task_metadata_path: meta/tasks.parquet
+    selection_notes:
+      - This is the dataset revision used by the official PARC reference notebook.
+      - Data and videos are consolidated into chunk files, so episode-selective download is less efficient.
+      - Do not infer a license; resolve and record the authoritative license before training use.
+
+  - source_id: openvla_modified_libero_rlds
+    role: standard_libero_replay
+    repo_id: openvla/modified_libero_rlds
+    repo_type: dataset
+    revision: 6ce6aaaaabdbe590b1eef5cd29c0d33f14a08551
+    license: mit
+    format: rlds_tfds
+    total_tasks: 40
+    approximate_size_gb: 10.2
+    datasets:
+      - libero_spatial_no_noops
+      - libero_object_no_noops
+      - libero_goal_no_noops
+      - libero_10_no_noops
+    selection_notes:
+      - Official OpenVLA training data with unsuccessful demonstrations and no-op transitions filtered during regeneration.
+      - Use as a small replay component to protect standard LIBERO capability.
+
+  - source_id: sylvest_libero_plus_rlds_mixdata
+    role: authoritative_openvla_oft_plus_training_archive
+    repo_id: Sylvest/libero_plus_rlds
+    repo_type: dataset
+    revision: 0cd38d5a756c7a60eca669286f2b53a1aaa94707
+    license: mit
+    format: split_zip_rlds
+    approximate_size_gb: 75.5
+    archive_parts:
+      - libero_plus_mixdata.z01
+      - libero_plus_mixdata.z02
+      - libero_plus_mixdata.zip
+    selection_notes:
+      - This is the RLDS mixdata source associated with the selected OpenVLA-OFT+ checkpoint.
+      - Full download is expensive and does not support convenient episode-selective retrieval.
+      - Prefer metadata-first selection from the LeRobot mirror, then convert only selected episodes to RLDS.
