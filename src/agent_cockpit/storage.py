@@ -30,8 +30,13 @@ class TraceStore:
         )
         return cls(drive_root / "40_experiments" / "agent_cockpit")
 
-    def create_run(self, run_id: str, metadata: dict[str, Any]) -> Path:
+    def run_dir(self, run_id: str) -> Path:
         run_dir = self.root / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        return run_dir
+
+    def create_run(self, run_id: str, metadata: dict[str, Any]) -> Path:
+        run_dir = self.run_dir(run_id)
         (run_dir / "steps").mkdir(parents=True, exist_ok=True)
         payload = {
             "run_id": run_id,
@@ -43,7 +48,7 @@ class TraceStore:
         return run_dir
 
     def step_dir(self, run_id: str, step_id: int) -> Path:
-        step_dir = self.root / run_id / "steps" / f"step_{step_id:04d}"
+        step_dir = self.run_dir(run_id) / "steps" / f"step_{step_id:04d}"
         step_dir.mkdir(parents=True, exist_ok=True)
         return step_dir
 
@@ -81,6 +86,31 @@ class TraceStore:
         Image.fromarray(array, mode="RGB").save(destination)
         return destination
 
+    def save_step_artifact(
+        self,
+        run_id: str,
+        step_id: int,
+        name: str,
+        payload: dict[str, Any],
+    ) -> Path:
+        """既存Stepへ追加JSONを保存し、Timelineは重複追加しない。"""
+
+        path = self.step_dir(run_id, step_id) / f"{name}.json"
+        self._write_json(path, payload)
+        return path
+
+    def save_run_artifact(
+        self,
+        run_id: str,
+        name: str,
+        payload: dict[str, Any],
+    ) -> Path:
+        """Loop集計などRun全体のJSONを保存する。"""
+
+        path = self.run_dir(run_id) / f"{name}.json"
+        self._write_json(path, payload)
+        return path
+
     def save_step(
         self,
         run_id: str,
@@ -91,7 +121,7 @@ class TraceStore:
         for name, payload in payloads.items():
             self._write_json(step_dir / f"{name}.json", payload)
         self._append_jsonl(
-            self.root / run_id / "timeline.jsonl",
+            self.run_dir(run_id) / "timeline.jsonl",
             {
                 "step_id": step_id,
                 "saved_at": datetime.now(timezone.utc).isoformat(),
