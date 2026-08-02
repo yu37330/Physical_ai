@@ -4,7 +4,8 @@ source:
   repo_id: Sylvest/openvla-7b-oft-finetuned-libero-plus-mixdata
   repo_type: model
   requested_revision: main
-  license: verify_from_model_card
+  license: mit
+  license_source: hugging_face_model_card_metadata
 required_patterns:
   - config.json
   - model*.safetensors
