@@ -39,6 +39,17 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 
 詳細は[`notebooks/README.md`](notebooks/README.md)を参照してください。
 
+## 事前CI Gate
+
+次の2 JobはGitHub Actionsで通過実績があります。
+
+```text
+unit-and-contracts
+synthetic-rlds-e2e
+```
+
+Synthetic E2Eでは、Parquet・Front/Wrist MP4生成、TFDS/RLDS shard生成、Train/Val読込、State/Action parity、画像方向保持までをCPUで検証します。
+
 ## 実装ディレクトリ
 
 - `submission/openvla_oft_offline/`: OpenVLA-OFT+提出用オフライン推論ランタイム
