@@ -28,6 +28,12 @@ Notebookは実装ロジックを持たず、Repo内のScriptを順番に実行�
    - 最終Checkpoint配置
    - ZIP、容量、SHA256
    - 運営Validator
+6. `05_agent_cockpit.ipynb`
+   - Google Drive mount
+   - Agent Cockpit用BranchをClone
+   - Gradio UI起動
+   - Goal、Subgoal、候補Action、Safety、Evaluatorを確認
+   - Step TraceをGoogle Driveへ保存
 
 ## 原則
 
@@ -36,3 +42,4 @@ Notebookは実装ロジックを持たず、Repo内のScriptを順番に実行�
 - Notebook実行前にBranchとCommitを確認する
 - 大容量処理は`/content/work`で行い、完成物だけGoogle Driveへ保存する
 - S1が失敗した場合はS2を実行しない
+- Agent Cockpitは初期状態では`propose`モードとし、実機Executorを接続しない
