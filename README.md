@@ -15,6 +15,7 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 ## ドキュメント
 
 - [GPU実行前の準備状況](docs/PRE_GPU_READINESS.md)
+- [GPU実行前の実装ステータス](docs/PRE_GPU_IMPLEMENTATION_STATUS.md)
 - [基盤構想](docs/PLATFORM_ARCHITECTURE.md)
 - [モデル選定・最小調整方針](docs/MODEL_STRATEGY.md)
 - [OpenVLA-OFT+の依存関係・オフライン推論成立性](docs/OPENVLA_OFFLINE_RUNTIME_ASSESSMENT.md)
