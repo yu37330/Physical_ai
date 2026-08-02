@@ -1,6 +1,6 @@
 experiment:
-  name: openvla_oft_plus_smoke_lora_r8
-  purpose: Verify A100 40GB fine-tuning, checkpoint save, and reload
+  name: openvla_oft_plus_stage_a_head_proprio
+  purpose: Preserve the pretrained VLA while tuning only action head and proprio projector
 
 model:
   checkpoint: Sylvest/openvla-7b-oft-finetuned-libero-plus-mixdata
@@ -10,7 +10,10 @@ model:
   use_l1_regression: true
   use_diffusion: false
   use_film: false
-  lora_rank: 8
+  use_lora: false
+  train_vla_lora: false
+  freeze_vision_lora: true
+  lora_rank_for_optional_stage_b: 8
 
 training:
   batch_size: 1
@@ -19,7 +22,6 @@ training:
   max_steps: 500
   save_freq: 100
   image_aug: true
-  gradient_checkpointing: true
   seed: 42
 
 selection:

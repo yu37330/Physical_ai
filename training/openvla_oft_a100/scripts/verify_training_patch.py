@@ -10,8 +10,10 @@ REQUIRED_SNIPPETS = (
     "train_vla_lora",
     "freeze_vision_lora",
     "Loaded pretrained {module_name}",
-    "PARC Stage A",
-    "PARC Stage B",
+    "FrozenModuleWrapper",
+    "base VLA frozen without adding random LoRA weights",
+    "vision-backbone LoRA parameters frozen",
+    "if cfg.use_lora and cfg.train_vla_lora",
 )
 
 

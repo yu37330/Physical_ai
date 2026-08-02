@@ -6,6 +6,7 @@ RUN_ROOT_DIR="${RUN_ROOT_DIR:?Set RUN_ROOT_DIR to the output directory}"
 DATASET_NAME="${DATASET_NAME:?Set DATASET_NAME to the prepared smoke dataset}"
 CHECKPOINT_DIR="${CHECKPOINT_DIR:?Set CHECKPOINT_DIR to the downloaded local checkpoint}"
 MAX_STEPS="${MAX_STEPS:-500}"
+USE_LORA="${USE_LORA:-False}"
 LORA_RANK="${LORA_RANK:-8}"
 GRAD_ACCUMULATION_STEPS="${GRAD_ACCUMULATION_STEPS:-8}"
 TRAIN_VLA_LORA="${TRAIN_VLA_LORA:-False}"
@@ -13,7 +14,9 @@ FREEZE_VISION_LORA="${FREEZE_VISION_LORA:-True}"
 
 export WANDB_MODE="${WANDB_MODE:-offline}"
 
-python vla-scripts/finetune.py \
+# The upstream script calls torch.distributed barriers even for one GPU, so use
+# torchrun with a one-process group instead of plain `python`.
+torchrun --standalone --nnodes 1 --nproc-per-node 1 vla-scripts/finetune.py \
   --vla_path "$CHECKPOINT_DIR" \
   --component_checkpoint_dir "$CHECKPOINT_DIR" \
   --data_root_dir "$DATA_ROOT_DIR" \
@@ -33,7 +36,7 @@ python vla-scripts/finetune.py \
   --save_freq 100 \
   --save_latest_checkpoint_only True \
   --image_aug True \
-  --use_lora True \
+  --use_lora "$USE_LORA" \
   --lora_rank "$LORA_RANK" \
   --train_vla_lora "$TRAIN_VLA_LORA" \
   --freeze_vision_lora "$FREEZE_VISION_LORA" \

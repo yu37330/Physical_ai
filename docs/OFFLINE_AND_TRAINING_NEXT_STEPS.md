@@ -13,8 +13,9 @@
 - LIBERO公式と同じGripper後処理
 - OpenVLA-OFT Repoの固定Commit Checkout
 - 既存Action Head・Proprio Projectorを引き継ぐ学習Patch
-- Stage AのHead＋Proprioだけ学習する設定
-- Stage BでVision側LoRAを凍結する設定
+- Stage Aは新規LoRAなしでVLA本体を完全Freeze
+- Stage BだけLoRA rank 8を追加しVision側LoRAをFreeze
+- 単GPUでも分散Barrierを成立させる`torchrun`実行
 - Model revision記録付きDownloader
 - Cold start、VRAM、First/Warm推論のベンチマーク
 - 提出ZIPの容量・SHA256生成
@@ -55,12 +56,6 @@ export OPENVLA_OFT_SOURCE=/content/openvla-oft
 bash submission/openvla_oft_offline/scripts/prepare_vendor.sh
 ```
 
-Checkpointを次へコピーする。
-
-```text
-submission/openvla_oft_offline/model_weights/openvla_oft_plus/
-```
-
 ### 6. Offline runtimeを計測
 
 ```bash
@@ -79,8 +74,6 @@ python submission/openvla_oft_offline/tools/compare_action_chunks.py \
   benchmark_results/openvla_offline_actions.npy
 ```
 
-Attention差分を先に検証するため、最初は公式側で前処理済み画像を保存して同じ画像を使う。PIL版前処理と公式TensorFlow版のEnd-to-End差分は別に評価する。
-
 ### 8. Stage A Smoke Fine-tuning
 
 ```bash
@@ -89,11 +82,20 @@ export DATA_ROOT_DIR=/content/drive/MyDrive/PARC2026/datasets/rlds
 export RUN_ROOT_DIR=/content/drive/MyDrive/PARC2026/experiments
 export DATASET_NAME=<prepared_dataset_name>
 export CHECKPOINT_DIR=/content/drive/MyDrive/PARC2026/models/openvla_oft_plus_base
+export USE_LORA=False
 export TRAIN_VLA_LORA=False
 bash /content/Physical_ai/training/openvla_oft_a100/scripts/train_smoke.sh
 ```
 
-Stage Aは既存VLAを固定し、事前学習済みAction HeadとProprio Projectorだけを小さく調整する。Stage Bへ進む場合のみ`TRAIN_VLA_LORA=True`とし、Vision側LoRAはFreezeする。
+Stage AはVLA本体へ新しいLoRAを追加せず、事前学習済みAction HeadとProprio Projectorだけを調整する。
+
+Stage Bへ進む場合だけ次を設定する。
+
+```bash
+export USE_LORA=True
+export TRAIN_VLA_LORA=True
+export FREEZE_VISION_LORA=True
+```
 
 ### 9. 提出ZIPを作る
 
