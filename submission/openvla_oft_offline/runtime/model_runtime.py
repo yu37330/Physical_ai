@@ -45,11 +45,12 @@ class OpenVLAOfflineRuntime:
 
     def _load_model(self) -> None:
         import torch
-        from transformers import AutoConfig, AutoImageProcessor, AutoModelForVision2Seq, AutoProcessor
 
+        # Use the vendored, pinned Prismatic implementation directly. Avoid
+        # AutoModel trust_remote_code and any dynamic module resolution.
         from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
         from prismatic.extern.hf.modeling_prismatic import OpenVLAForActionPrediction
-        from prismatic.extern.hf.processing_prismatic import PrismaticImageProcessor, PrismaticProcessor
+        from prismatic.extern.hf.processing_prismatic import PrismaticProcessor
         from prismatic.models.action_heads import L1RegressionActionHead
         from prismatic.models.projectors import ProprioProjector
         from prismatic.vla.constants import ACTION_DIM, PROPRIO_DIM
@@ -59,26 +60,14 @@ class OpenVLAOfflineRuntime:
         self._torch = torch
         self._device = torch.device("cuda:0")
 
-        for register in (
-            lambda: AutoConfig.register("openvla", OpenVLAConfig),
-            lambda: AutoImageProcessor.register(OpenVLAConfig, PrismaticImageProcessor),
-            lambda: AutoProcessor.register(OpenVLAConfig, PrismaticProcessor),
-            lambda: AutoModelForVision2Seq.register(OpenVLAConfig, OpenVLAForActionPrediction),
-        ):
-            try:
-                register()
-            except ValueError:
-                pass
-
         root = str(self.layout.root)
-        self._processor = AutoProcessor.from_pretrained(
-            root, trust_remote_code=True, local_files_only=True
-        )
-        self._vla = AutoModelForVision2Seq.from_pretrained(
+        config = OpenVLAConfig.from_pretrained(root, local_files_only=True)
+        self._processor = PrismaticProcessor.from_pretrained(root, local_files_only=True)
+        self._vla = OpenVLAForActionPrediction.from_pretrained(
             root,
+            config=config,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            trust_remote_code=True,
             local_files_only=True,
             attn_implementation="sdpa",
         ).to(self._device)
