@@ -46,6 +46,61 @@ class EpisodeSample:
         }
 
 
+@dataclass(frozen=True)
+class ReplayEpisode:
+    """自律Replayでフレームを順番に観測するためのEpisode本体。"""
+
+    split: str
+    episode_offset: int
+    episode_id: str
+    instruction: str
+    front_images: np.ndarray
+    wrist_images: np.ndarray
+    states: np.ndarray
+    actions: np.ndarray
+    metadata: dict[str, Any]
+
+    @property
+    def frame_count(self) -> int:
+        return int(self.states.shape[0])
+
+    def sample(self, frame_id: int) -> EpisodeSample:
+        if frame_id < 0 or frame_id >= self.frame_count:
+            raise IndexError(
+                f"frame_id {frame_id} is outside [0, {self.frame_count - 1}]"
+            )
+        return EpisodeSample(
+            split=self.split,
+            episode_offset=self.episode_offset,
+            frame_id=frame_id,
+            episode_id=self.episode_id,
+            instruction=self.instruction,
+            front_image=self.front_images[frame_id],
+            wrist_image=self.wrist_images[frame_id],
+            state=self.states[frame_id],
+            action=self.actions[frame_id],
+            action_chunk=build_action_chunk(self.actions, frame_id=frame_id),
+            metadata={
+                "episode_frame_count": self.frame_count,
+                **self.metadata,
+            },
+        )
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "split": self.split,
+            "episode_offset": self.episode_offset,
+            "episode_id": self.episode_id,
+            "instruction": self.instruction,
+            "frame_count": self.frame_count,
+            "front_images_shape": list(self.front_images.shape),
+            "wrist_images_shape": list(self.wrist_images.shape),
+            "states_shape": list(self.states.shape),
+            "actions_shape": list(self.actions.shape),
+            **self.metadata,
+        }
+
+
 def load_json(path: str | Path) -> dict[str, Any]:
     """JSONを読み込み、UIで扱える辞書として返す。"""
 
@@ -189,13 +244,7 @@ class RLDSEpisodeReader:
         builder = self._get_builder()
         return sorted(str(name) for name in builder.info.splits)
 
-    def read_sample(
-        self,
-        *,
-        split: str,
-        episode_offset: int,
-        frame_id: int,
-    ) -> EpisodeSample:
+    def read_episode(self, *, split: str, episode_offset: int) -> ReplayEpisode:
         builder = self._get_builder()
         if split not in builder.info.splits:
             raise KeyError(
@@ -218,12 +267,9 @@ class RLDSEpisodeReader:
                 f"No episode found for split={split}, offset={episode_offset}"
             ) from exc
 
-        steps_dataset = episode["steps"]
-        steps = list(steps_dataset.as_numpy_iterator())
+        steps = list(episode["steps"].as_numpy_iterator())
         if not steps:
             raise ValueError("RLDS episode contains no steps")
-        if frame_id < 0 or frame_id >= len(steps):
-            raise IndexError(f"frame_id {frame_id} is outside [0, {len(steps) - 1}]")
 
         states = np.stack(
             [_as_numpy(step["observation"]["state"]) for step in steps], axis=0
@@ -231,31 +277,37 @@ class RLDSEpisodeReader:
         actions = np.stack([_as_numpy(step["action"]) for step in steps], axis=0).astype(
             np.float32
         )
+        front_images = np.stack(
+            [_as_numpy(step["observation"]["image"]) for step in steps], axis=0
+        ).astype(np.uint8)
+        wrist_images = np.stack(
+            [_as_numpy(step["observation"]["wrist_image"]) for step in steps], axis=0
+        ).astype(np.uint8)
+
         if states.shape[1:] != (STATE_DIM,):
             raise ValueError(f"Expected state shape (T, {STATE_DIM}), got {states.shape}")
+        if actions.shape[1:] != (ACTION_DIM,):
+            raise ValueError(f"Expected action shape (T, {ACTION_DIM}), got {actions.shape}")
+        stream_lengths = {
+            states.shape[0],
+            actions.shape[0],
+            front_images.shape[0],
+            wrist_images.shape[0],
+        }
+        if len(stream_lengths) != 1:
+            raise ValueError("RLDS episode stream lengths do not match")
 
-        step = steps[frame_id]
         metadata = episode["episode_metadata"]
-        episode_id = _decode_text(metadata["episode_id"])
-        instruction = _decode_text(step["language_instruction"])
-        front = _as_numpy(step["observation"]["image"]).astype(np.uint8, copy=False)
-        wrist = _as_numpy(step["observation"]["wrist_image"]).astype(
-            np.uint8, copy=False
-        )
-
-        return EpisodeSample(
+        return ReplayEpisode(
             split=split,
             episode_offset=episode_offset,
-            frame_id=frame_id,
-            episode_id=episode_id,
-            instruction=instruction,
-            front_image=front,
-            wrist_image=wrist,
-            state=states[frame_id],
-            action=actions[frame_id],
-            action_chunk=build_action_chunk(actions, frame_id=frame_id),
+            episode_id=_decode_text(metadata["episode_id"]),
+            instruction=_decode_text(steps[0]["language_instruction"]),
+            front_images=front_images,
+            wrist_images=wrist_images,
+            states=states,
+            actions=actions,
             metadata={
-                "episode_frame_count": len(steps),
                 "suite": _decode_text(metadata["suite"]),
                 "task": _decode_text(metadata["task"]),
                 "source_episode_index": int(
@@ -263,3 +315,15 @@ class RLDSEpisodeReader:
                 ),
             },
         )
+
+    def read_sample(
+        self,
+        *,
+        split: str,
+        episode_offset: int,
+        frame_id: int,
+    ) -> EpisodeSample:
+        return self.read_episode(
+            split=split,
+            episode_offset=episode_offset,
+        ).sample(frame_id)
