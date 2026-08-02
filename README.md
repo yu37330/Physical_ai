@@ -8,7 +8,8 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 - GitHubをコード・設定・履歴の正本とする
 - Google ColabをGPU学習・重い評価の実行環境とする
 - Google Driveをモデル、データ、ログ、提出物の保管先とする
-- React/FastAPIで実験結果を比較・管理できる基盤を構築する
+- GradioでColab上の実験、推論、Agent Actionを確認できる検証UIを構築する
+- 将来はReact/FastAPIで実験結果を比較・管理できる常設基盤へ拡張する
 - Markdown/JSONに実験知識を蓄積し、LLMが過去実験を参照して次の実験を提案できるようにする
 - 公式評価由来の情報を学習データや自動最適化へ流入させない
 
@@ -17,6 +18,7 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 - [GPU実行前の準備状況](docs/PRE_GPU_READINESS.md)
 - [GPU実行前の実装ステータス](docs/PRE_GPU_IMPLEMENTATION_STATUS.md)
 - [基盤構想](docs/PLATFORM_ARCHITECTURE.md)
+- [Agent Cockpit設計・実行ガイド](docs/AGENT_COCKPIT.md)
 - [モデル選定・最小調整方針](docs/MODEL_STRATEGY.md)
 - [OpenVLA-OFT+の依存関係・オフライン推論成立性](docs/OPENVLA_OFFLINE_RUNTIME_ASSESSMENT.md)
 - [オフライン推論・学習環境の次の実行手順](docs/OFFLINE_AND_TRAINING_NEXT_STEPS.md)
@@ -35,9 +37,24 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 → 02_dataset_prepare.ipynb
 → 03_stage_a_train.ipynb
 → 04_submission_validate.ipynb
+→ 05_agent_cockpit.ipynb（実験・推論・Agent検証）
 ```
 
 詳細は[`notebooks/README.md`](notebooks/README.md)を参照してください。
+
+## Agent Cockpitの起動
+
+`notebooks/05_agent_cockpit.ipynb`をColabで開き、Google Driveをマウントして起動します。初期状態は`propose`モードで、AIは次のActionを提案しますがExecutorへ自動送信しません。
+
+主要画面：
+
+- Dashboard
+- Dataset Explorer
+- Inference
+- Agent Cockpit
+- Run Trace
+
+Traceは`MyDrive/PARC2026/40_experiments/agent_cockpit/`へ保存します。
 
 ## 事前CI Gate
 
@@ -55,10 +72,13 @@ Synthetic E2Eでは、Parquet・Front/Wrist MP4生成、TFDS/RLDS shard生成、
 - `submission/openvla_oft_offline/`: OpenVLA-OFT+提出用オフライン推論ランタイム
 - `training/openvla_oft_a100/`: Google Colab A100 40GB向け学習環境、RLDS変換・Batch互換検証
 - `src/data/`: Dataset棚卸し、Episode選定、Mini E2E、LeRobot→RLDS変換、Manifest生成・昇格
+- `src/agent_cockpit/`: Planner、Safety Validator、Evaluator、Trace保存、Agent Orchestrator
+- `frontend/gradio_app.py`: Colab上で起動する実験・Agent検証UI
+- `configs/agent_cockpit.example.yaml`: 自律レベル、Action制約、Drive保存先の設定例
 - `configs/models/`: Checkpointの必要ファイル・容量・提出対象契約
 - `notebooks/`: Scriptを順番に呼び出すColab薄型Notebook
 - `.github/workflows/`: Unit、契約、Synthetic RLDS E2Eの自動検証
-- `tests/`: 前処理、Action chunk、Dataset pipeline、RLDS契約、Checkpoint Manifest、依存境界のテスト
+- `tests/`: 前処理、Action chunk、Dataset pipeline、RLDS契約、Checkpoint Manifest、Agent制約のテスト
 
 ## 予定構成
 
@@ -71,6 +91,8 @@ Physical_ai/
 ├── schemas/
 ├── notebooks/
 ├── src/
+│   ├── data/
+│   └── agent_cockpit/
 ├── submission/
 │   └── openvla_oft_offline/
 ├── training/
@@ -89,6 +111,8 @@ Physical_ai/
 5. 各実験に`run_manifest.json`を残す
 6. 各データセットに`dataset_manifest.json`を残す
 7. 各モデルに`checkpoint_manifest.json`を残す
-8. 公式評価の観測、Seed、非公開タスク情報は保存・学習利用しない
-9. 最終提出物とレポートの内容を一致させる
-10. Mini Datasetと全事前Gateを通過してから800 Episode変換とStage A学習へ進む
+8. Agentの各StepにObservation、Proposal、Safety、Execution、EvaluationのTraceを残す
+9. 公式評価の観測、Seed、非公開タスク情報は保存・学習利用しない
+10. 最終提出物とレポートの内容を一致させる
+11. Mini Datasetと全事前Gateを通過してから800 Episode変換とStage A学習へ進む
+12. 実機ExecutorはSafety制約と人の承認を実装するまで接続しない
