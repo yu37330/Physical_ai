@@ -48,11 +48,11 @@ def patch_openvla_oft(root: Path) -> None:
         CONFIG_MARKER,
         f'''
 # {CONFIG_MARKER}
-# Source TFDS steps expose image, wrist_image, state, action, and language_instruction.
+# Match the official modified-LIBERO OXE contract.
 OXE_DATASET_CONFIGS["{DATASET_NAME}"] = {{
     "image_obs_keys": {{"primary": "image", "secondary": None, "wrist": "wrist_image"}},
     "depth_obs_keys": {{"primary": None, "secondary": None, "wrist": None}},
-    "state_obs_keys": ["state"],
+    "state_obs_keys": ["EEF_state", "gripper_state"],
     "language_key": "language_instruction",
     "state_encoding": StateEncoding.POS_EULER,
     "action_encoding": ActionEncoding.EEF_POS,
@@ -68,13 +68,20 @@ OXE_DATASET_CONFIGS["{DATASET_NAME}"] = {{
         f'''
 # {TRANSFORM_MARKER}
 def parc_libero_plus_selected_transform(trajectory):
-    """Match the official OpenVLA LIBERO visual convention without changing state/action semantics."""
-    trajectory["observation"]["image"] = tf.image.rot90(
-        trajectory["observation"]["image"], k=2
+    """Mirror OpenVLA-OFT's official libero_dataset_transform."""
+    # Source action uses -1=open and +1=close. OpenVLA trains with +1=open and 0=close.
+    gripper_action = trajectory["action"][:, -1:]
+    gripper_action = invert_gripper_actions(tf.clip_by_value(gripper_action, 0, 1))
+    trajectory["action"] = tf.concat(
+        [trajectory["action"][:, :6], gripper_action], axis=1
     )
-    trajectory["observation"]["wrist_image"] = tf.image.rot90(
-        trajectory["observation"]["wrist_image"], k=2
-    )
+
+    # LeRobot state is EEF xyz + axis-angle + two gripper qpos values.
+    trajectory["observation"]["EEF_state"] = trajectory["observation"]["state"][:, :6]
+    trajectory["observation"]["gripper_state"] = trajectory["observation"]["state"][:, -2:]
+
+    # Do not rotate here: LeRobot's LIBERO processor stores images in the
+    # HuggingFaceVLA/LIBERO 180-degree-rotated training convention already.
     return trajectory
 
 
