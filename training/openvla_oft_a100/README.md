@@ -32,9 +32,10 @@ LIBERO-plus selected RLDS   800 Episode
 
 先にLIBERO-plus 800 EpisodeだけをTFDS/RLDSへ変換し、OpenVLA-OFTの`RLDSBatchTransform`とCollatorまで通します。Plus単体の互換性が確認できてから通常LIBERO Replayを混合します。
 
-LeRobot→RLDS変換とBatch互換性の仕様は次を参照してください。
+学習データ全体と変換仕様は次を参照してください。
 
 ```text
+docs/LEARNING_DATA_REPORT.md
 docs/LEROBOT_TO_RLDS_AND_BATCH_COMPATIBILITY.md
 ```
 
@@ -78,4 +79,6 @@ TFDS shardはColabローカルの`/content/work`へ生成し、検証後にGoogl
 
 ## 注意
 
-公式OpenVLA-OFT Fine-tuningはRLDS形式を前提とします。LeRobot形式データをそのまま渡さず、固定Selectionと変換Report、Dataset Manifestを残します。v001では独自No-op除去を行わず、画像180度回転はOpenVLAのStandardization transformだけで実施します。
+公式OpenVLA-OFT Fine-tuningはRLDS形式を前提とします。LeRobot形式データをそのまま渡さず、固定Selectionと変換Report、Dataset Manifestを残します。
+
+v001では独自No-op除去を行いません。LeRobotのLIBERO ProcessorがDataset保存時に画像を180度回転するため、ConverterとOpenVLA OXE transformでは追加回転しません。State分割とGripper Action変換は、公式OpenVLAの`libero_dataset_transform`と同じ処理を使用します。
