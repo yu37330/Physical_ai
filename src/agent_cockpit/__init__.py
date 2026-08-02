@@ -1,4 +1,8 @@
-"""Physical AI agent cockpit domain package."""
+"""Physical AI agent cockpit domain package。"""
+
+from __future__ import annotations
+
+from typing import Any
 
 from .models import (
     ActionCandidate,
@@ -8,7 +12,6 @@ from .models import (
     EvaluationResult,
     SafetyResult,
 )
-from .orchestrator import AgentOrchestrator
 
 __all__ = [
     "ActionCandidate",
@@ -19,3 +22,13 @@ __all__ = [
     "SafetyResult",
     "AgentOrchestrator",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """重いUI・保存依存を、実際に必要になるまで読み込まない。"""
+
+    if name == "AgentOrchestrator":
+        from .orchestrator import AgentOrchestrator
+
+        return AgentOrchestrator
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
