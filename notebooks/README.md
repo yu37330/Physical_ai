@@ -32,8 +32,13 @@ Notebookは実装ロジックを持たず、Repo内のScriptを順番に実行�
    - Google Drive mount
    - Agent Cockpit用BranchをClone
    - Gradio UI起動
-   - Goal、Subgoal、候補Action、Safety、Evaluatorを確認
+   - Dataset Explorer、OpenVLA推論、候補Action、Safety、Evaluator、自律Replayを確認
    - Step TraceをGoogle Driveへ保存
+7. `06_gpu_libero_validation.ipynb`
+   - Drive上のCheckpointを`/content`へキャッシュ
+   - 実Checkpoint＋実RLDSのGPU Gate
+   - Latency、Peak VRAM、Action chunk shape、教師Action誤差をJSON保存
+   - 任意で公式LIBERO因果閉ループ1 Trialを実行
 
 ## 原則
 
@@ -43,3 +48,5 @@ Notebookは実装ロジックを持たず、Repo内のScriptを順番に実行�
 - 大容量処理は`/content/work`で行い、完成物だけGoogle Driveへ保存する
 - S1が失敗した場合はS2を実行しない
 - Agent Cockpitは初期状態では`propose`モードとし、実機Executorを接続しない
+- 実Checkpoint GPU Gateが通る前にLIBERO Task数を増やさない
+- 公式LIBERO観測や初期状態を学習データへ追加しない
