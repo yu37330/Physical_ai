@@ -27,7 +27,9 @@ training_only_patterns:
   - checkpoint-*/**
   - runs/**
   - wandb/**
+  - .cache/**
 submission_exclude_patterns:
+  - .cache/**
   - lora_adapter/**
   - optimizer*
   - scheduler*
@@ -35,6 +37,7 @@ submission_exclude_patterns:
   - rng_state*
   - checkpoint-*/**
   - model_source_manifest.json
+  - checkpoint_manifest.json
 budgets:
   model_directory_max_bytes: 19000000000
   submission_zip_max_bytes: 20000000000
