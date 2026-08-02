@@ -1,0 +1,35 @@
+schema_version: 1
+experiment:
+  id: stage_a_s2_head_proprio_500
+  purpose: Run the first substantive minimal adjustment after S1 passes all gates
+model:
+  checkpoint_dir: /content/drive/MyDrive/PARC2026/models/openvla_oft_plus_base
+  initialize_components_from: /content/drive/MyDrive/PARC2026/experiments/stage_a_s1_head_proprio_100/stage_a_s1_100
+  dtype: bfloat16
+  freeze_vla_backbone: true
+  use_new_lora: false
+  train_action_head: true
+  train_proprio_projector: true
+data:
+  dataset_name: parc_libero_plus_selected
+  data_root_dir: /content/work/rlds
+training:
+  batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-5
+  warmup_steps: 50
+  max_steps: 500
+  save_frequency: 100
+  image_augmentation: true
+  seed: 20260802
+gates:
+  require_s1_pass: true
+  require_loss_decrease: true
+  reject_nan_or_inf: true
+  protect_base_light_background_performance: true
+  reject_collision_rate_regression: true
+  compare_with_s0_fixed_inputs: true
+outputs:
+  run_dir: /content/drive/MyDrive/PARC2026/experiments/stage_a_s2_head_proprio_500
+  checkpoint_name: stage_a_s2_500
+  metrics: metrics.json
