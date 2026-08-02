@@ -1,0 +1,26 @@
+schema_version: 1
+experiment:
+  id: stage_a_s0_base_inference
+  purpose: Measure the unmodified OpenVLA-OFT+ checkpoint before any learning
+model:
+  checkpoint_dir: /content/drive/MyDrive/PARC2026/models/openvla_oft_plus_base
+  dtype: bfloat16
+  trainable_components: []
+data:
+  dataset_name: parc_libero_plus_selected
+  data_root_dir: /content/work/rlds
+execution:
+  training_enabled: false
+  inference_samples_per_split: 8
+  action_chunk_length: 8
+  seed: 20260802
+gates:
+  checkpoint_manifest_status: pass
+  dataset_manifest_status: payload_validated
+  finite_actions: true
+  action_shape: [8, 7]
+  proprio_dim: 8
+outputs:
+  run_dir: /content/drive/MyDrive/PARC2026/experiments/stage_a_s0_base_inference
+  fixed_input_actions: base_action_chunks.npz
+  metrics: metrics.json

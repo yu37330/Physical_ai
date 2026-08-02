@@ -1,0 +1,26 @@
+{
+  "repository": "matsuolab/PARC2026_pre",
+  "repository_url": "https://github.com/matsuolab/PARC2026_pre",
+  "commit": "fcac626949f52c0edb4b0701bc75e87464e36d64",
+  "checked_at": "2026-08-02T08:23:00+09:00",
+  "required_paths": [
+    "README.md",
+    "setup.sh",
+    "evaluate.py",
+    "validate_submission.py",
+    "pipeline/config.py",
+    "pipeline/environment.py",
+    "pipeline/rollout.py",
+    "pipeline/scorer.py",
+    "pipeline/total_score.py",
+    "pipeline/remote_policy.py",
+    "compe/t1/T1_TASKS.csv",
+    "compe/t1/register.py",
+    "submission_template/policy_server.py",
+    "submission_template/requirements.txt",
+    "examples/README.md",
+    "examples/smolvla_libero_spatial_lora.ipynb",
+    "THIRD_PARTY_LICENSES.md"
+  ],
+  "policy": "Do not silently track latest. Update the commit only after reviewing official changes."
+}

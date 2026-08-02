@@ -1,0 +1,79 @@
+schema_version: 1
+conversion_id: parc_lerobot_to_rlds_v001
+source_dataset: Sylvest/libero_plus_lerobot
+source_revision: 22c57433fef692b5b9ecc0795344daac7fa867a5
+selection_file: artifacts/datasets/libero_plus_selection_v001.json
+output_dataset_name: parc_libero_plus_selected
+output_version: 1.0.0
+output_format: tfds_rlds
+
+source_mapping:
+  parquet_state_column: observation.state
+  parquet_action_column: action
+  front_video_key: observation.images.front
+  wrist_video_key: observation.images.wrist
+
+rlds_contract:
+  tfds_splits:
+    train: train
+    validation: val
+  observation:
+    image: [256, 256, 3]
+    wrist_image: [256, 256, 3]
+    state: [8]
+    state_semantics:
+      - eef_x
+      - eef_y
+      - eef_z
+      - eef_axis_angle_x
+      - eef_axis_angle_y
+      - eef_axis_angle_z
+      - gripper_qpos_0
+      - gripper_qpos_1
+  action: [7]
+  language_instruction: scalar_string
+  step_flags:
+    - is_first
+    - is_last
+    - is_terminal
+    - reward
+    - discount
+
+transform_ownership:
+  converter:
+    - decode_selected_episode_videos
+    - preserve_lerobot_image_orientation
+    - preserve_float32_state_and_action
+    - emit_train_and_val_splits
+  openvla_standardization_transform:
+    - split_state_into_eef_state_6d_and_gripper_state_2d
+    - convert_gripper_action_from_minus1_open_plus1_close_to_plus1_open_zero_close
+  openvla_rlds_loader:
+    - resize_to_model_image_size
+    - normalize_state_and_action_with_bounds_q99
+    - build_action_chunks_length_8
+    - tokenize_language_instruction
+    - emit_separate_front_and_wrist_tensors
+
+compatibility_gates:
+  state_dim: 8
+  action_dim: 7
+  action_chunk_length: 8
+  camera_count: 2
+  train_validation_overlap: false
+  finite_state_and_action: true
+  image_orientation_probe_required: true
+  required_batch_keys:
+    - pixel_values
+    - pixel_values_wrist
+    - input_ids
+    - labels
+    - actions
+    - proprio
+
+notes:
+  - OpenVLA-OFT reads the validation split as val; the selection manifest continues to call it validation.
+  - LeRobot's LIBERO processor rotates images 180 degrees before storing them; the standard conversion path must not rotate them a second time.
+  - The OpenVLA standardization transform mirrors the official libero_dataset_transform for state and gripper action semantics.
+  - Do not infer perturbation labels from episode numbers or instructions.
+  - No-op removal is disabled in v001 until parity with the official modified LIBERO transform is measured.

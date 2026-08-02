@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/run_manifest.schema.json",
+  "title": "PARC2026 Run Manifest",
+  "type": "object",
+  "required": [
+    "run_id",
+    "git_sha",
+    "base_model",
+    "datasets",
+    "training",
+    "inference",
+    "metrics",
+    "eligible_for_submission"
+  ],
+  "properties": {
+    "run_id": {"type": "string", "minLength": 1},
+    "git_sha": {"type": "string", "minLength": 7},
+    "base_model": {
+      "type": "object",
+      "required": ["name", "revision"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "revision": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "datasets": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "training": {"type": "object"},
+    "inference": {"type": "object"},
+    "metrics": {"type": "object"},
+    "checkpoint_drive_path": {"type": "string"},
+    "checkpoint_sha256": {"type": "string"},
+    "eligible_for_submission": {"type": "boolean"},
+    "official_evaluation_data_used_for_training": {"const": false}
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yu37330/Physical_ai/schemas/dataset_manifest.schema.json",
+  "title": "PARC2026 Dataset Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "dataset_id",
+    "created_at",
+    "purpose",
+    "provenance",
+    "compliance",
+    "structure",
+    "taxonomy",
+    "selection",
+    "splits",
+    "transformations",
+    "quality",
+    "limitations"
+  ],
+  "properties": {
+    "manifest_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "dataset_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "purpose": {"type": "string", "minLength": 1},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sources", "inventory_file", "inventory_sha256", "selection_file", "selection_sha256"],
+      "properties": {
+        "sources": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/source"}},
+        "inventory_file": {"type": "string", "minLength": 1},
+        "inventory_sha256": {"$ref": "#/$defs/sha256"},
+        "selection_file": {"type": "string", "minLength": 1},
+        "selection_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "compliance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_for_training", "contains_official_evaluation_data", "official_evaluation_data_segregated", "generation_method", "disclosure_notes"],
+      "properties": {
+        "allowed_for_training": {"const": true},
+        "contains_official_evaluation_data": {"const": false},
+        "official_evaluation_data_segregated": {"const": true},
+        "generation_method": {
+          "type": "string",
+          "enum": ["public_dataset_subset", "public_dataset_mix", "simulator_scripted_policy", "teleoperation", "data_augmentation", "mixed"]
+        },
+        "disclosure_notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "structure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "robot_type", "fps", "task_count", "episode_count", "frame_count", "modalities"],
+      "properties": {
+        "format": {"type": "string", "minLength": 1},
+        "robot_type": {"type": ["string", "null"]},
+        "fps": {"type": "number", "exclusiveMinimum": 0},
+        "task_count": {"type": "integer", "minimum": 1},
+        "episode_count": {"type": "integer", "minimum": 1},
+        "frame_count": {"type": "integer", "minimum": 1},
+        "modalities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["images", "state", "action"],
+          "properties": {
+            "images": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/tensorFeature"}},
+            "state": {"$ref": "#/$defs/semanticFeature"},
+            "action": {"$ref": "#/$defs/semanticFeature"}
+          }
+        }
+      }
+    },
+    "taxonomy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suite_episode_counts", "perturbation_labels"],
+      "properties": {
+        "suite_episode_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["spatial", "object", "goal", "long"],
+          "properties": {
+            "spatial": {"type": "integer", "minimum": 0},
+            "object": {"type": "integer", "minimum": 0},
+            "goal": {"type": "integer", "minimum": 0},
+            "long": {"type": "integer", "minimum": 0}
+          }
+        },
+        "perturbation_labels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "label_source", "counts"],
+          "properties": {
+            "status": {"type": "string", "enum": ["complete", "partial", "unknown"]},
+            "label_source": {
+              "type": "string",
+              "enum": ["source_metadata", "source_path", "generation_record", "manual_verified", "not_in_public_lerobot_metadata"]
+            },
+            "counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+          }
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "strategy", "selected_episode_count"],
+      "properties": {
+        "unit": {"const": "episode"},
+        "strategy": {"type": "object"},
+        "selected_episode_count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "splits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["train", "validation"],
+      "properties": {
+        "train": {"$ref": "#/$defs/split"},
+        "validation": {"$ref": "#/$defs/split"},
+        "test": {"$ref": "#/$defs/split"}
+      }
+    },
+    "transformations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "version", "deterministic", "parameters"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "version": {"type": "string", "minLength": 1},
+          "deterministic": {"type": "boolean"},
+          "parameters": {"type": "object"}
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checks", "train_validation_overlap", "status"],
+      "properties": {
+        "checks": {"type": "object"},
+        "train_validation_overlap": {"const": false},
+        "status": {"type": "string", "enum": ["metadata_selected_pending_payload_validation", "payload_validated", "rejected"]}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["repo_id", "repo_type", "resolved_revision", "license"],
+      "properties": {
+        "repo_id": {"type": "string", "minLength": 3},
+        "repo_type": {"const": "dataset"},
+        "resolved_revision": {"type": "string", "minLength": 7},
+        "license": {"type": "string", "minLength": 1},
+        "metadata_root": {"type": "string"}
+      }
+    },
+    "tensorFeature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "shape", "dtype"],
+      "properties": {
+        "key": {"type": "string", "minLength": 1},
+        "shape": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1}},
+        "dtype": {"type": "string", "minLength": 1}
+      }
+    },
+    "semanticFeature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "shape", "dtype", "semantic_order"],
+      "properties": {
+        "key": {"type": "string", "minLength": 1},
+        "shape": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1}},
+        "dtype": {"type": "string", "minLength": 1},
+        "semantic_order": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "split": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["episode_count", "episode_indices", "split_strategy"],
+      "properties": {
+        "episode_count": {"type": "integer", "minimum": 0},
+        "episode_indices": {"type": "array", "uniqueItems": true, "items": {"type": "integer", "minimum": 0}},
+        "split_strategy": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

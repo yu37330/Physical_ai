@@ -1,0 +1,16 @@
+# PyPI packages only. Do not add git/http/local-path dependencies.
+# Torch is expected to be provided by the GPU scoring image; pin it only after
+# the organizer's CUDA/PyTorch image is confirmed.
+fastapi>=0.68
+uvicorn>=0.15
+msgpack>=1.0
+numpy==1.26.4
+transformers==4.40.1
+tokenizers==0.19.1
+timm==0.9.10
+peft==0.11.1
+accelerate>=0.25.0,<1.0
+sentencepiece==0.1.99
+safetensors>=0.4.3
+einops>=0.7,<1.0
+Pillow>=10,<12

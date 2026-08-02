@@ -1,0 +1,76 @@
+schema_version: 1
+dataset_id: parc_stage_a_balanced_v001
+purpose: Minimal Action Head and Proprio Projector adaptation while preserving OpenVLA-OFT+ robustness.
+seed: 20260802
+output_format: rlds_tfds
+selection_unit: episode
+
+sources:
+  libero_plus:
+    source_id: sylvest_libero_plus_lerobot
+    target_episode_count: 800
+    weight: 0.8
+    per_suite_target:
+      spatial: 200
+      object: 200
+      goal: 200
+      long: 200
+    final_per_task_target: 20
+    metadata_candidate_per_task: 40
+    candidate_split_per_task:
+      train: 32
+      validation: 8
+    final_split_per_task:
+      train: 16
+      validation: 4
+    sampling:
+      phase_1: episode_length_quantiles
+      phase_2: initial_state_farthest_point
+      require_deterministic_seed: true
+      perturbation_label_policy: unknown_unless_authoritative
+
+  standard_libero_replay:
+    source_id: openvla_modified_libero_rlds
+    target_episode_count: 200
+    weight: 0.2
+    per_suite_target:
+      spatial: 50
+      object: 50
+      goal: 50
+      long: 50
+    split_per_task:
+      train: 4
+      validation: 1
+
+transformations:
+  - name: rotate_image_180
+    applies_to: [front, wrist]
+    reason: Match the OpenVLA LIBERO training/evaluation convention.
+  - name: parc_resolution_simulation
+    parameters:
+      downsample_to: [128, 128]
+      model_preprocess_after_downsample: true
+    reason: Reproduce information loss in the PARC observation API.
+  - name: remove_noop_transitions
+    parameters:
+      threshold: 0.0001
+    reason: Keep the OpenVLA modified-LIBERO convention.
+  - name: action_chunking
+    parameters:
+      chunk_length: 8
+      action_dim: 7
+
+quality_gates:
+  - no_train_validation_episode_overlap
+  - all_40_tasks_present
+  - each_suite_has_10_tasks
+  - state_dim_equals_8
+  - action_dim_equals_7
+  - both_camera_streams_present
+  - no_nan_or_inf_in_state_or_action
+  - official_evaluation_data_absent
+
+known_limitations:
+  - Public LeRobot metadata does not identify the perturbation category of each training episode.
+  - Initial metadata-only selection can balance task, suite, and trajectory length, but not camera/layout/robot perturbations directly.
+  - Farthest-point selection over initial state requires downloading selected candidate parquet files.

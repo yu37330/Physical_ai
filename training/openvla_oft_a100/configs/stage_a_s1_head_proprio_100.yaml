@@ -1,0 +1,32 @@
+schema_version: 1
+experiment:
+  id: stage_a_s1_head_proprio_100
+  purpose: Verify that pretrained action head and proprio projector can be minimally updated
+model:
+  checkpoint_dir: /content/drive/MyDrive/PARC2026/models/openvla_oft_plus_base
+  dtype: bfloat16
+  freeze_vla_backbone: true
+  use_new_lora: false
+  train_action_head: true
+  train_proprio_projector: true
+data:
+  dataset_name: parc_libero_plus_selected
+  data_root_dir: /content/work/rlds
+training:
+  batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-5
+  warmup_steps: 20
+  max_steps: 100
+  save_frequency: 100
+  image_augmentation: true
+  seed: 20260802
+gates:
+  require_loss_decrease: true
+  reject_nan_or_inf: true
+  compare_with_s0_fixed_inputs: true
+  proceed_to_s2_only_if_validation_not_worse: true
+outputs:
+  run_dir: /content/drive/MyDrive/PARC2026/experiments/stage_a_s1_head_proprio_100
+  checkpoint_name: stage_a_s1_100
+  metrics: metrics.json

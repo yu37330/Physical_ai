@@ -1,0 +1,41 @@
+run_id: r1_official_50
+purpose: end_to_end_baseline
+
+base_model:
+  name: lerobot/smolvla_libero_plus
+  revision: 7bb70aa5bc92b82c9239142775d3a173103567ff
+  vlm_name: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+
+dataset:
+  name: lerobot/libero_plus
+  revision: f3f49f426d75030177b18778374005bc12ccd588
+  suite: libero_spatial
+  tasks: 10
+  episodes_per_task: 5
+  total_episodes: 50
+
+training:
+  framework: lerobot
+  framework_version: v0.6.0
+  method: lora
+  steps: 3000
+  batch_size: 1
+  learning_rate: 0.0003
+  final_learning_rate: 0.00003
+  warmup_steps: 100
+  lora_rank: 16
+  lora_alpha: 16
+  freeze_vision_encoder: true
+  train_expert_only: true
+  seed: 42
+
+evaluation:
+  public_track: track1
+  smoke_episodes_per_task: 1
+  screening_episodes_per_task: 3
+  candidate_episodes_per_task: 10
+  final_episodes_per_task: 20
+
+compliance:
+  allowed_for_training_only_if_manifest_valid: true
+  official_evaluation_data_used_for_training: false

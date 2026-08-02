@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Large model and training artifacts
+model_weights/
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.bin
+runs/
+experiments/
+wandb/
+
+# Local data and generated submissions
+datasets/
+*.zip
+*.npy
+*.npz
+benchmark_results/
+
+# Notebook / OS
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
