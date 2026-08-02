@@ -1,0 +1,61 @@
+schema_version: 1
+conversion_id: parc_lerobot_to_rlds_v001
+source_dataset: Sylvest/libero_plus_lerobot
+source_revision: 22c57433fef692b5b9ecc0795344daac7fa867a5
+selection_file: artifacts/datasets/libero_plus_selection_v001.json
+output_dataset_name: parc_libero_plus_selected
+output_version: 1.0.0
+output_format: tfds_rlds
+
+source_mapping:
+  parquet_state_column: observation.state
+  parquet_action_column: action
+  front_video_key: observation.images.front
+  wrist_video_key: observation.images.wrist
+
+rlds_contract:
+  observation:
+    image: [256, 256, 3]
+    wrist_image: [256, 256, 3]
+    state: [8]
+  action: [7]
+  language_instruction: scalar_string
+  step_flags:
+    - is_first
+    - is_last
+    - is_terminal
+    - reward
+    - discount
+
+transform_ownership:
+  converter:
+    - decode_selected_episode_videos
+    - preserve_float32_state_and_action
+    - emit_train_and_validation_splits
+  openvla_standardization_transform:
+    - rotate_front_image_180
+    - rotate_wrist_image_180
+  openvla_rlds_loader:
+    - resize_to_model_image_size
+    - normalize_state_and_action_with_bounds_q99
+    - build_action_chunks_length_8
+    - tokenize_language_instruction
+
+compatibility_gates:
+  state_dim: 8
+  action_dim: 7
+  action_chunk_length: 8
+  camera_count: 2
+  train_validation_overlap: false
+  finite_state_and_action: true
+  required_batch_keys:
+    - pixel_values
+    - input_ids
+    - labels
+    - actions
+    - proprio
+
+notes:
+  - Do not rotate images in both the converter and OpenVLA transform. The default workflow rotates only in the OpenVLA transform.
+  - Do not infer perturbation labels from episode numbers or instructions.
+  - No-op removal is disabled in v001 until parity with the official modified LIBERO transform is measured.
