@@ -2,3 +2,9 @@ huggingface_hub>=0.27,<2
 pyarrow>=16,<20
 PyYAML>=6,<7
 jsonschema>=4.23,<5
+opencv-python-headless==4.11.0.86
+
+# Keep the OpenVLA/OFT-tested TFDS line for custom RLDS builders.
+tensorflow==2.15.1
+tensorflow-datasets==4.9.3
+rlds==0.1.8
