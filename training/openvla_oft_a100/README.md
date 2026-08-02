@@ -20,24 +20,62 @@ A100 40GBでOpenVLA-OFT+の素の性能を維持しながら、必要最小限�
 - Vision BackboneのLoRAはFreeze
 - Language/統合側だけを低学習率で更新
 
+## 学習データ
+
+Stage Aの初期構成は次です。
+
+```text
+LIBERO-plus selected RLDS   800 Episode
+通常LIBERO Replay           200 Episode
+合計                        1,000 Episode
+```
+
+先にLIBERO-plus 800 EpisodeだけをTFDS/RLDSへ変換し、OpenVLA-OFTの`RLDSBatchTransform`とCollatorまで通します。Plus単体の互換性が確認できてから通常LIBERO Replayを混合します。
+
+LeRobot→RLDS変換とBatch互換性の仕様は次を参照してください。
+
+```text
+docs/LEROBOT_TO_RLDS_AND_BATCH_COMPATIBILITY.md
+```
+
 ## 原則
 
 - 学習は固定Commitの公式OpenVLA-OFT Repoと公式Transformers Forkを使う
 - 2画像とProprioceptionを維持する
-- LIBERO-plus 70%＋通常LIBERO Replay 30%を基本とする
+- Plus 800＋通常LIBERO Replay 200をStage Aの初期配分とする
 - Full Fine-tuningとVision Encoder全面解凍は行わない
 - 学習成果物はGoogle Driveへ保存する
 - Colabは固定Git CommitをCheckoutする
+- Dataset Manifestが`payload_validated`になるまで学習を開始しない
 
 ## 実行順
 
 1. `scripts/bootstrap_colab.sh`で環境を作る
-2. Google Drive上のRLDSデータまたは変換済みSubsetを配置する
-3. `configs/smoke_lora_r8.yaml`のPathを確認する
-4. `scripts/train_smoke.sh`を実行する
-5. 100〜500 stepsでLoss、VRAM、Checkpoint再ロードを確認する
-6. 推論Parity確認後に1,000 steps以上へ進む
+2. 選択済みLeRobot EpisodeのParquetとFront/Wrist動画を配置する
+3. `scripts/prepare_stage_a_rlds.sh`でRLDS変換・Batch互換検証を実行する
+4. `dataset_manifest.payload_validated.json`を確認する
+5. `configs/smoke_lora_r8.yaml`のPathを確認する
+6. `scripts/train_smoke.sh`を実行する
+7. 100〜500 stepsでLoss、VRAM、Checkpoint再ロードを確認する
+8. 推論Parity確認後に1,000 steps以上へ進む
+
+## RLDS変換・互換検証
+
+```bash
+export PROJECT_ROOT=/content/Physical_ai
+export OPENVLA_ROOT=/content/openvla-oft
+export SOURCE_ROOT=/content/data/libero_plus_selected
+export SELECTION_FILE=/content/drive/MyDrive/PARC2026/artifacts/libero_plus_selection_v001.json
+export TFDS_ROOT=/content/work/rlds
+export BASE_CHECKPOINT=/content/drive/MyDrive/PARC2026/models/openvla_oft_plus_base
+export MANIFEST_FILE=/content/drive/MyDrive/PARC2026/artifacts/dataset_manifest.json
+export ARTIFACT_ROOT=/content/drive/MyDrive/PARC2026/artifacts/parc_stage_a_balanced_v001
+
+bash training/openvla_oft_a100/scripts/prepare_stage_a_rlds.sh
+```
+
+TFDS shardはColabローカルの`/content/work`へ生成し、検証後にGoogle DriveへCopyする方がI/O面で安全です。
 
 ## 注意
 
-公式OpenVLA-OFT Fine-tuningはRLDS形式を前提とする。LeRobot形式データをそのまま渡せないため、公開RLDSデータを使うか、事前にRLDSへ変換する。
+公式OpenVLA-OFT Fine-tuningはRLDS形式を前提とします。LeRobot形式データをそのまま渡さず、固定Selectionと変換Report、Dataset Manifestを残します。v001では独自No-op除去を行わず、画像180度回転はOpenVLAのStandardization transformだけで実施します。
