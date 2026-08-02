@@ -1,12 +1,19 @@
-"""PARC2026 policy server.
+"""ポリシーサーバー（提出用テンプレート）
 
-The server and serialization sections follow the organizer template. Only the
-MyPolicy implementation connects the offline OpenVLA-OFT+ runtime.
+このファイルを編集して、自分のモデルを組み込んでください。
+編集が必要なのは MyPolicy クラスの中身だけです。
+それ以外のコード（サーバー部分、シリアライゼーション）は変更不可です。
+
+ローカルテスト:
+    pip install -r requirements.txt
+    python policy_server.py                  # サーバー起動（port 8000）
+
+    # 別ターミナルで評価実行
+    python -m pipeline --server-url http://localhost:8000 --dry-run
 """
 
 import argparse
 from abc import ABC, abstractmethod
-from pathlib import Path
 
 import msgpack
 import numpy as np
@@ -14,18 +21,53 @@ import uvicorn
 from fastapi import FastAPI, Request, Response
 
 
+# ============================================================
+# ポリシーのインターフェース定義（変更不可）
+# MyPolicy が満たすべき get_action() / reset() の仕様を定める。
+# ============================================================
+
+
 class BasePolicy(ABC):
+    """ポリシーの基底クラス。get_action() と reset() を実装してください。"""
+
     @abstractmethod
     def get_action(self, obs: dict[str, np.ndarray]) -> np.ndarray:
+        """観測からアクションを推論する。
+
+        Args:
+            obs: 環境からの観測。以下のキーが含まれる:
+                - "agentview_image": (128, 128, 3) uint8
+                - "robot0_eye_in_hand_image": (128, 128, 3) uint8
+                - "robot0_joint_pos": (7,) float
+                - "robot0_eef_pos": (3,) float
+                - "robot0_eef_quat": (4,) float
+                - "robot0_gripper_qpos": (2,) float
+
+        Returns:
+            action: (7,) float32 — [dx, dy, dz, droll, dpitch, dyaw, gripper]
+        """
         ...
 
     @abstractmethod
     def reset(self, instruction: str = "") -> None:
+        """エピソード開始時に呼ばれる。内部状態をリセットしてください。
+
+        Args:
+            instruction: タスクの言語指示（例: "pick up the red mug and place it on the shelf"）
+        """
         ...
 
 
+# ============================================================
+# ここを編集する（MyPolicy の中身だけを自分のモデルに置き換える）
+# ============================================================
+
+
 class MyPolicy(BasePolicy):
+    """OpenVLA-OFT+を完全ローカルCheckpointからロードする。"""
+
     def __init__(self):
+        from pathlib import Path
         from runtime.policy import OfflinePolicy
 
         model_dir = Path(__file__).resolve().parent / "model_weights" / "openvla_oft_plus"
@@ -36,6 +78,11 @@ class MyPolicy(BasePolicy):
 
     def reset(self, instruction: str = "") -> None:
         self._policy.reset(instruction)
+
+
+# ============================================================
+# 以下は変更不可
+# ============================================================
 
 
 def deserialize_obs(data: bytes) -> dict[str, np.ndarray]:
@@ -74,10 +121,8 @@ async def reset_policy(request: Request):
     instruction = ""
     if body:
         import json
-
         data = json.loads(body)
         instruction = data.get("instruction", "")
-    assert _policy is not None
     _policy.reset(instruction=instruction)
     return {"status": "ok"}
 
@@ -86,7 +131,6 @@ async def reset_policy(request: Request):
 async def act(request: Request):
     body = await request.body()
     obs = deserialize_obs(body)
-    assert _policy is not None
     action = _policy.get_action(obs)
     return Response(
         content=serialize_action(action),

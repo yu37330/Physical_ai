@@ -2,7 +2,7 @@
 
 ## 実装済み
 
-- PARC公式Policy Serverのシリアライゼーション仕様へ整合
+- PARC公式Policy Serverをそのまま維持し、`MyPolicy`だけ差し替え
 - 完全ローカルCheckpoint Loader
 - Sylvest版Checkpoint IDのハードコード回避
 - Transformers 4.40.1用双方向SDPA Attention Patch
@@ -16,6 +16,8 @@
 - Stage AのHead＋Proprioだけ学習する設定
 - Stage BでVision側LoRAを凍結する設定
 - Model revision記録付きDownloader
+- Cold start、VRAM、First/Warm推論のベンチマーク
+- 提出ZIPの容量・SHA256生成
 
 ## 明日最初に行うこと
 
@@ -53,18 +55,31 @@ export OPENVLA_OFT_SOURCE=/content/openvla-oft
 bash submission/openvla_oft_offline/scripts/prepare_vendor.sh
 ```
 
-### 6. 公式Fork基準出力を保存
+Checkpointを次へコピーする。
 
-固定入力でAction chunk、Peak VRAM、Cold start、First inference、Warm inference 20回を保存する。
+```text
+submission/openvla_oft_offline/model_weights/openvla_oft_plus/
+```
 
-### 7. Offline runtimeとのParity
+### 6. Offline runtimeを計測
+
+```bash
+python submission/openvla_oft_offline/tools/benchmark_runtime.py \
+  --model-dir submission/openvla_oft_offline/model_weights/openvla_oft_plus \
+  --repeats 20 \
+  --output benchmark_results/openvla_offline.json \
+  --actions-output benchmark_results/openvla_offline_actions.npy
+```
+
+### 7. 公式ForkとのParity
 
 ```bash
 python submission/openvla_oft_offline/tools/compare_action_chunks.py \
-  official_fork_actions.npy offline_runtime_actions.npy
+  benchmark_results/official_fork_actions.npy \
+  benchmark_results/openvla_offline_actions.npy
 ```
 
-Attention差分を先に検証するため、公式側で前処理済み画像を保存して同じ画像を使う。PIL版前処理と公式TensorFlow版のEnd-to-End差分は別に評価する。
+Attention差分を先に検証するため、最初は公式側で前処理済み画像を保存して同じ画像を使う。PIL版前処理と公式TensorFlow版のEnd-to-End差分は別に評価する。
 
 ### 8. Stage A Smoke Fine-tuning
 
@@ -79,6 +94,15 @@ bash /content/Physical_ai/training/openvla_oft_a100/scripts/train_smoke.sh
 ```
 
 Stage Aは既存VLAを固定し、事前学習済みAction HeadとProprio Projectorだけを小さく調整する。Stage Bへ進む場合のみ`TRAIN_VLA_LORA=True`とし、Vision側LoRAはFreezeする。
+
+### 9. 提出ZIPを作る
+
+```bash
+python submission/openvla_oft_offline/tools/build_submission_zip.py \
+  --output /content/drive/MyDrive/PARC2026/submissions/openvla_oft_plus_v001.zip
+```
+
+その後、運営Repoの`validate_submission.py`と`evaluate.py`を必ず実行する。
 
 ## Go / No-Go
 

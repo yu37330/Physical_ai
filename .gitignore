@@ -7,40 +7,25 @@ __pycache__/
 .venv/
 venv/
 
-# Node
-node_modules/
-dist/
-build/
-
-# IDE / OS
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-
-# Official repository working copy
-vendor/
-
-# Models and large data
+# Large model and training artifacts
+model_weights/
+*.safetensors
 *.pt
 *.pth
 *.ckpt
-*.safetensors
-*.onnx
-*.zip
-*.tar
-*.tar.gz
-*.parquet
-*.mp4
-*.avi
-model_weights/
-checkpoints/
-datasets/
-artifacts/
-results/
+*.bin
+runs/
+experiments/
+wandb/
 
-# Local secrets and paths
-.env
-.env.*
-!.env.example
-local_config.yaml
+# Local data and generated submissions
+datasets/
+*.zip
+*.npy
+*.npz
+benchmark_results/
+
+# Notebook / OS
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
