@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/parc2026-foundation
+      - agent/add-colab-agent-cockpit
   pull_request:
 
 permissions:
@@ -31,7 +32,7 @@ jobs:
           python -m pip install pytest numpy Pillow PyYAML jsonschema pyarrow
 
       - name: Compile Python sources
-        run: python -m compileall -q src submission training scripts tests
+        run: python -m compileall -q src frontend submission training scripts tests
 
       - name: Validate YAML and notebook JSON
         run: |
@@ -67,7 +68,8 @@ jobs:
             tests/test_dataset_pipeline.py \
             tests/test_rlds_contract.py \
             tests/test_offline_runtime.py \
-            tests/test_pre_gpu_readiness.py
+            tests/test_pre_gpu_readiness.py \
+            tests/test_agent_cockpit.py
 
   synthetic-rlds-e2e:
     runs-on: ubuntu-latest
