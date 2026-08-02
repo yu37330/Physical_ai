@@ -41,21 +41,42 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    reader = RLDSEpisodeReader(args.dataset_dir)
-    policy = OpenVLAPolicyAdapter(args.checkpoint_dir)
-    runner = ColabGPUValidationRunner(
-        reader=reader,
-        policy=policy,
-        config=GPUValidationConfig(
-            split=args.split,
-            episode_offset=args.episode_offset,
-            start_frame=args.start_frame,
-            num_frames=args.num_frames,
-            warmup_runs=args.warmup_runs,
-            require_cuda=not args.allow_cpu,
-        ),
-    )
-    report = runner.run()
+    try:
+        reader = RLDSEpisodeReader(args.dataset_dir)
+        policy = OpenVLAPolicyAdapter(args.checkpoint_dir)
+        runner = ColabGPUValidationRunner(
+            reader=reader,
+            policy=policy,
+            config=GPUValidationConfig(
+                split=args.split,
+                episode_offset=args.episode_offset,
+                start_frame=args.start_frame,
+                num_frames=args.num_frames,
+                warmup_runs=args.warmup_runs,
+                require_cuda=not args.allow_cpu,
+            ),
+        )
+        report = runner.run()
+    except Exception as exc:
+        failure = {
+            "status": "fail",
+            "validation_type": "colab_gpu_real_checkpoint_rlds",
+            "checkpoint_dir": str(args.checkpoint_dir),
+            "dataset_dir": str(args.dataset_dir),
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+            "official_evaluation_data_used_for_training": False,
+        }
+        output = write_validation_report(args.output, failure)
+        print(
+            json.dumps(
+                {"status": "fail", "output": str(output), **failure},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        raise
+
     output = write_validation_report(args.output, report)
     print(
         json.dumps(
