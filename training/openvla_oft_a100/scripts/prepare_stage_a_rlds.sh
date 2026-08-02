@@ -20,6 +20,12 @@ python -m src.data.convert_selected_lerobot_to_rlds \
   --output-root "$TFDS_ROOT" \
   --report "$ARTIFACT_ROOT/rlds_conversion_report.json"
 
+python -m src.data.validate_rlds_source_parity \
+  --source-root "$SOURCE_ROOT" \
+  --tfds-root "$TFDS_ROOT" \
+  --episodes-per-split 2 \
+  --output "$ARTIFACT_ROOT/rlds_source_parity.json"
+
 python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/patch_parc_dataset_registry.py" \
   --openvla-root "$OPENVLA_ROOT"
 
@@ -34,6 +40,7 @@ python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/validate_rlds_batch_tran
 python -m src.data.update_dataset_manifest_after_rlds \
   --manifest "$MANIFEST_FILE" \
   --conversion-report "$ARTIFACT_ROOT/rlds_conversion_report.json" \
+  --parity-report "$ARTIFACT_ROOT/rlds_source_parity.json" \
   --compatibility-report "$ARTIFACT_ROOT/openvla_rlds_compatibility.json" \
   --output "$ARTIFACT_ROOT/dataset_manifest.payload_validated.json"
 
@@ -41,5 +48,5 @@ python -m src.data.validate_dataset_manifest \
   "$ARTIFACT_ROOT/dataset_manifest.payload_validated.json" \
   --schema "$PROJECT_ROOT/schemas/dataset_manifest.schema.json"
 
-echo "Stage A RLDS dataset and OpenVLA compatibility checks completed."
+echo "Stage A RLDS dataset, source parity, and OpenVLA compatibility checks completed."
 echo "Artifacts: $ARTIFACT_ROOT"
