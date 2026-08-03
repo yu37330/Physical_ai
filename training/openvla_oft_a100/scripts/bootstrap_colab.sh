@@ -32,6 +32,14 @@ if ! python -c "import dlimp" 2>/dev/null; then
   python -m pip install --no-deps \
     "dlimp @ git+https://github.com/moojink/dlimp_openvla@${DLIMP_COMMIT:-040105d256bd28866cc6620621a3d5f7b6b91b46}"
 fi
+
+# The Colab image ships tensorflow_metadata 1.21, whose generated protobuf code
+# needs a 6.x runtime, while this TensorFlow line pins protobuf below 6. Importing
+# dlimp then dies on "gencode 6.31.1 runtime 5.29.6". requirements-data.txt
+# already pins the compatible pair, so apply it before verifying the imports
+# rather than after. Idempotent when a caller installs it again later.
+python -m pip install -q -r "$PROJECT_ROOT/training/openvla_oft_a100/requirements-data.txt"
+
 python -c "import tensorflow_graphics.geometry.transformation"
 python -c "import dlimp"
 
