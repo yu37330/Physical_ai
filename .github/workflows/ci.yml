@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/parc2026-foundation
+      - agent/add-colab-agent-cockpit
   pull_request:
 
 permissions:
@@ -31,7 +32,7 @@ jobs:
           python -m pip install pytest numpy Pillow PyYAML jsonschema pyarrow
 
       - name: Compile Python sources
-        run: python -m compileall -q src submission training scripts tests
+        run: python -m compileall -q src frontend submission training scripts tests
 
       - name: Validate YAML and notebook JSON
         run: |
@@ -67,7 +68,37 @@ jobs:
             tests/test_dataset_pipeline.py \
             tests/test_rlds_contract.py \
             tests/test_offline_runtime.py \
-            tests/test_pre_gpu_readiness.py
+            tests/test_pre_gpu_readiness.py \
+            tests/test_agent_cockpit.py \
+            tests/test_agent_cockpit_data_and_policy.py \
+            tests/test_autonomous_replay.py \
+            tests/test_gpu_validation_and_libero.py
+
+  frontend-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements-frontend.txt
+
+      - name: Install frontend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-frontend.txt
+
+      - name: Build Gradio application
+        run: |
+          python - <<'PY'
+          from frontend.gradio_app import build_app
+          app = build_app()
+          assert app is not None
+          print('Gradio Blocks build passed')
+          PY
 
   synthetic-rlds-e2e:
     runs-on: ubuntu-latest

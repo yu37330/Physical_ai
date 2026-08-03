@@ -1,0 +1,31 @@
+schema_version: 1
+storage:
+  drive_root: /content/drive/MyDrive/PARC2026
+  trace_subdir: 40_experiments/agent_cockpit
+  local_work_root: /content/work/physical_ai
+agent:
+  default_mode: propose
+  max_steps: 50
+  max_same_action_repeats: 3
+  uncertainty_stop_threshold: 0.65
+policy:
+  provider: openvla_oft
+  action_dim: 7
+  action_chunk_size: 8
+  checkpoint_path: 30_models/openvla_oft/current
+replay:
+  mode: offline_autonomous_replay
+  default_max_steps: 5
+  action_mae_threshold: 0.25
+  max_consecutive_mismatches: 3
+  max_repeated_actions: 3
+  stop_on_safety_failure: true
+  causal_simulation: false
+safety:
+  max_abs_delta: 0.25
+  max_gripper_abs: 1.0
+  require_human_approval_for_real_robot: true
+  emergency_stop_enabled: true
+compliance:
+  persist_official_evaluation_observations: false
+  allow_official_evaluation_data_for_training: false
