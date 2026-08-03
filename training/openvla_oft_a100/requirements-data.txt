@@ -4,12 +4,18 @@ PyYAML>=6,<7
 jsonschema>=4.23,<5
 opencv-python-headless==4.11.0.86
 
-# Keep the OpenVLA/OFT-tested TensorFlow/TFDS line for custom RLDS builders.
-# tensorflow-metadata 1.21 ships protobuf-6 generated code, while TensorFlow
-# 2.15 requires protobuf <5. TF Metadata 1.15 requires protobuf <4.21 on
-# Python 3.10, so 3.20.3 is the common compatible version.
-tensorflow==2.15.1
-tensorflow-datasets==4.9.3
-tensorflow-metadata==1.15.0
-protobuf==3.20.3
+# Python 3.10/3.11 keeps the original OpenVLA/OFT-tested RLDS line.
+tensorflow==2.15.1; python_version < "3.12"
+tensorflow-datasets==4.9.3; python_version < "3.12"
+tensorflow-metadata==1.15.0; python_version < "3.12"
+protobuf==3.20.3; python_version < "3.12"
+
+# Current Colab runtimes use Python 3.12, for which TensorFlow 2.15 wheels do
+# not exist. Use the Colab-compatible TensorFlow 2.19 line for Dataset
+# Explorer and RLDS validation while keeping the older line reproducible.
+tensorflow>=2.19,<2.20; python_version >= "3.12"
+tensorflow-datasets>=4.9.9,<4.10; python_version >= "3.12"
+tensorflow-metadata>=1.17.2,<1.18; python_version >= "3.12"
+protobuf>=4.25.2,<6; python_version >= "3.12"
+
 rlds==0.1.8
