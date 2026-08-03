@@ -136,6 +136,23 @@ def main() -> None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     if status != "pass":
+        # The JSON alone makes a failure hard to read in a terminal, so restate
+        # the failing gates with the numbers that caused them.
+        failed = [name for name in required_check_names if not checks[name]]
+        print("\nPreflight failed:", ", ".join(failed), file=sys.stderr)
+        for name, disk, minimum in (
+            ("work_disk_free", work_disk, args.minimum_work_free_gb),
+            ("drive_disk_free", drive_disk, args.minimum_drive_free_gb),
+        ):
+            if name in failed:
+                free_gb = int(disk["free_bytes"]) / 1024**3
+                print(
+                    f"  {name}: {free_gb:.1f}GB free at {disk['checked_path']},"
+                    f" need {minimum:g}GB",
+                    file=sys.stderr,
+                )
+        if "a100_40gb" in failed:
+            print(f"  a100_40gb: {gpu_text or 'no GPU reported'}", file=sys.stderr)
         raise SystemExit(1)
 
 

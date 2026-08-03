@@ -125,6 +125,28 @@ def test_preflight_makes_the_drive_checks_opt_out(tmp_path: Path) -> None:
     assert {"drive_mounted", "drive_disk_free"} <= set(without["checks"])
 
 
+def test_preflight_explains_which_gate_failed(tmp_path: Path) -> None:
+    """JSONだけだとターミナルで原因が読み取れないので、数値付きで理由を出す。"""
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "training/openvla_oft_a100/scripts/preflight.py"),
+            "--project-root", str(ROOT),
+            "--work-root", str(tmp_path),
+            "--drive-root", str(tmp_path),
+            "--no-require-drive",
+            "--minimum-work-free-gb", "999999",
+            "--output", str(tmp_path / "preflight.json"),
+        ],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+    )
+
+    assert completed.returncode == 1
+    assert "Preflight failed:" in completed.stderr
+    assert "work_disk_free" in completed.stderr
+    assert "need 999999GB" in completed.stderr
+
+
 def test_preflight_accepts_python_312(tmp_path: Path) -> None:
     """Current Colab runtimes are 3.12; the gate must not reject them."""
     payload = _run_preflight(tmp_path, ["--minimum-drive-free-gb", "0"])
