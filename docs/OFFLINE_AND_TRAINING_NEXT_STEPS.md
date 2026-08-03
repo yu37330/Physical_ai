@@ -25,7 +25,7 @@
 ### 1. リポジトリを取得
 
 ```bash
-git clone -b feat/parc2026-foundation https://github.com/yu37330/Physical_ai.git
+git clone -b main https://github.com/yu37330/Physical_ai.git
 cd Physical_ai
 ```
 

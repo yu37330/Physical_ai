@@ -148,7 +148,7 @@ S1がGateを通過しない場合、S2へ進まない。
 4. Mini Validation 1件に対してParity 2件を要求する問題
 5. Mini実行から本番Dataset Manifestを誤って昇格し得る問題
 
-採用したRLDS変換依存:
+採用したRLDS変換依存（Python 3.10/3.11）:
 
 ```text
 TensorFlow 2.15.1
@@ -157,6 +157,19 @@ TensorFlow Metadata 1.15.0
 Protobuf 3.20.3
 RLDS 0.1.8
 ```
+
+現行ColabのPython 3.12にはTensorFlow 2.15のWheelが存在しないため、3.12では次を採用する。`requirements-data.txt`のEnvironment markerで自動選択する。
+
+```text
+TensorFlow 2.19系
+TensorFlow Datasets 4.9.9以上4.10未満
+TensorFlow Metadata 1.17.2以上1.18未満
+Protobuf 4.25.2以上6未満
+importlib_resources 6以上
+RLDS 0.1.8
+```
+
+加えて、固定OpenVLA-OFT Commitの`pyproject.toml`は3.12で解決できない。`bootstrap_colab.sh`が`patch_openvla_oft_dependencies.py`でTensorFlow Pinを緩め、`tensorflow-addons`にPython 3.12 Wheelが無い`tensorflow_graphics`をDependencyから外し、`--no-deps`で再導入する。Python 3.10/3.11ではこのPatchはNo-opとなる。
 
 ## 4. 明日の実行順
 

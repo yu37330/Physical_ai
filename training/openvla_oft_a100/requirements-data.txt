@@ -17,5 +17,8 @@ tensorflow>=2.19,<2.20; python_version >= "3.12"
 tensorflow-datasets>=4.9.9,<4.10; python_version >= "3.12"
 tensorflow-metadata>=1.17.2,<1.18; python_version >= "3.12"
 protobuf>=4.25.2,<6; python_version >= "3.12"
+# tensorflow-datasets 4.9.10 imports importlib_resources from dataset_builder.py
+# but only declares it for python_version < "3.9".
+importlib_resources>=6; python_version >= "3.12"
 
 rlds==0.1.8

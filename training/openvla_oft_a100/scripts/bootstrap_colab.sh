@@ -10,7 +10,22 @@ git clone https://github.com/moojink/openvla-oft.git "$WORKDIR"
 git -C "$WORKDIR" checkout "$OPENVLA_OFT_COMMIT"
 
 python -m pip install --upgrade pip setuptools wheel packaging ninja
+
+# Python 3.12 Colab runtimes have no tensorflow==2.15.0 wheel and no
+# tensorflow-addons wheel; adjust the pins before the editable install so
+# dependency resolution can succeed. No-op on Python 3.10/3.11.
+python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/patch_openvla_oft_dependencies.py" \
+  "$WORKDIR/pyproject.toml"
+
 python -m pip install -e "$WORKDIR"
+
+# The patch drops tensorflow_graphics on Python 3.12 to avoid the unresolvable
+# tensorflow-addons dependency. prismatic still imports
+# tensorflow_graphics.geometry.transformation, which needs only TensorFlow.
+if ! python -c "import tensorflow_graphics" 2>/dev/null; then
+  python -m pip install --no-deps "tensorflow_graphics==2021.12.3"
+fi
+python -c "import tensorflow_graphics.geometry.transformation"
 
 if [[ "${INSTALL_FLASH_ATTN:-0}" == "1" ]]; then
   python -m pip install "flash-attn==2.5.5" --no-build-isolation

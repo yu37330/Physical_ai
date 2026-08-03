@@ -150,7 +150,7 @@ drive.mount('/content/drive')
 
 ```bash
 %cd /content
-!git clone -b agent/add-colab-agent-cockpit https://github.com/yu37330/Physical_ai.git
+!git clone -b main https://github.com/yu37330/Physical_ai.git
 %cd /content/Physical_ai
 !pip install -r training/openvla_oft_a100/requirements-data.txt
 !pip install -r requirements-frontend.txt
