@@ -19,17 +19,41 @@ REPORT="${VIABILITY_REPORT:-$WORK_ROOT/submission_viability.json}"
 
 colab::section "GPU"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
-# 採点はL4 24GB。A100やT4で測った値はそのまま使えないので記録して警告する。
 GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)"
+GPU_TOTAL_MIB="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)"
+
+# 7Bをbf16で載せるだけで約15GB要る。T4は14.5GBかつTuringでbf16非対応なので、
+# 測定に入っても必ずOOMするだけ時間を捨てることになる。
+if (( GPU_TOTAL_MIB < 20000 )) && [[ "${ALLOW_SMALL_GPU:-0}" != "1" ]]; then
+  echo "This GPU has ${GPU_TOTAL_MIB}MiB, which cannot hold the 7B checkpoint." >&2
+  echo "Scoring uses an NVIDIA L4 24GB; select an L4 (or A100) runtime." >&2
+  echo "Set ALLOW_SMALL_GPU=1 only to measure a model that actually fits." >&2
+  exit 1
+fi
+# 採点はL4 24GB。A100で測ったLatencyはそのまま使えないので警告だけ残す。
 if [[ "$GPU_NAME" != *"L4"* ]]; then
   echo "WARNING: 採点環境はNVIDIA L4 24GBです。現在は $GPU_NAME のため、"
   echo "         VRAMとLatencyは参考値になります。最終判定はL4で取り直してください。"
 fi
 
+# 計測目的なら Base 重みをそのまま置いて構わない。ただしこの構成は「公開重みを
+# 実質的に変更せず推論する」に該当するため提出できない（docs/OFFICIAL_RULES.md 6章）。
+if [[ "${STAGE_BASE_CHECKPOINT:-0}" == "1" ]]; then
+  colab::section "Staging base checkpoint for measurement only"
+  if [[ ! -d "$BASE_CHECKPOINT" ]]; then
+    echo "Base checkpoint not found: $BASE_CHECKPOINT" >&2
+    echo "Run colab_setup.sh first." >&2
+    exit 1
+  fi
+  mkdir -p "$MODEL_TARGET"
+  rsync -a --delete "$BASE_CHECKPOINT/" "$MODEL_TARGET/"
+  echo "NOTE: base weights only. Not submittable; measurement use only."
+fi
+
 if [[ ! -d "$MODEL_TARGET" ]] || [[ -z "$(ls -A "$MODEL_TARGET" 2>/dev/null)" ]]; then
   echo "Checkpoint not found: $MODEL_TARGET" >&2
-  echo "Run colab_setup.sh, then place the checkpoint there. For a base-weights" >&2
-  echo "measurement run (not submittable), copy \$BASE_CHECKPOINT into it." >&2
+  echo "Run colab_setup.sh, then either place the trained checkpoint there or" >&2
+  echo "re-run with STAGE_BASE_CHECKPOINT=1 for a base-weights measurement." >&2
   exit 1
 fi
 

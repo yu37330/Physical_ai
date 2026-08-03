@@ -114,6 +114,17 @@ def test_preflight_makes_the_a100_check_opt_in(tmp_path: Path) -> None:
     assert "a100_40gb" in with_flag["required_checks"]
 
 
+def test_preflight_makes_the_drive_checks_opt_out(tmp_path: Path) -> None:
+    """計測だけの実行はDriveへ何も書かないので、mount必須で止めない。"""
+    default = _run_preflight(tmp_path / "a", [])
+    without = _run_preflight(tmp_path / "b", ["--no-require-drive"])
+
+    assert {"drive_mounted", "drive_disk_free"} <= set(default["required_checks"])
+    assert not {"drive_mounted", "drive_disk_free"} & set(without["required_checks"])
+    # 外すのは必須判定だけで、レポートには残す。
+    assert {"drive_mounted", "drive_disk_free"} <= set(without["checks"])
+
+
 def test_preflight_accepts_python_312(tmp_path: Path) -> None:
     """Current Colab runtimes are 3.12; the gate must not reject them."""
     payload = _run_preflight(tmp_path, ["--minimum-drive-free-gb", "0"])
