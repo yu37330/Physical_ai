@@ -17,6 +17,8 @@ dependencies = [
     "tensorflow==2.15.0",
     "tensorflow_datasets==4.9.3",
     "tensorflow_graphics==2021.12.3",
+    "dlimp @ git+https://github.com/moojink/dlimp_openvla",
+    "sentencepiece==0.1.99",
     "timm==0.9.10",
 ]
 """
@@ -54,11 +56,17 @@ def test_dependency_patch_relaxes_tensorflow_pins_on_python_312(tmp_path: Path) 
         "tensorflow_datasets==4.9.3": "tensorflow_datasets>=4.9.9,<4.10",
         # Dropped so pip stops resolving tensorflow-addons, which has no 3.12 wheel.
         "tensorflow_graphics==2021.12.3": None,
+        # Dropped because dlimp pins tensorflow==2.15.0 itself; relaxing only the
+        # top-level pin moves the conflict instead of resolving it.
+        "dlimp @ git+https://github.com/moojink/dlimp_openvla": None,
+        # 0.1.99 has no cp312 wheel, so 3.12 would fall back to a source build.
+        "sentencepiece==0.1.99": "sentencepiece==0.2.0",
     }
     patched = pyproject.read_text(encoding="utf-8")
     assert '"tensorflow>=2.19,<2.20"' in patched
     assert '"tensorflow_datasets>=4.9.9,<4.10"' in patched
     assert "tensorflow_graphics" not in patched
+    assert "dlimp" not in patched
     # Removing an entry must not leave a dangling line or comma behind.
     assert '    "timm==0.9.10",\n]' in patched
     # Unrelated pins keep the originally tested OpenVLA-OFT versions.

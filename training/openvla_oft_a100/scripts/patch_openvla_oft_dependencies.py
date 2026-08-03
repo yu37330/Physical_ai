@@ -6,14 +6,20 @@ cannot be installed at all:
 - `tensorflow==2.15.0` and `tensorflow_datasets==4.9.3` ship no 3.12 wheels.
 - `tensorflow_graphics==2021.12.3` requires `tensorflow-addons`, whose final
   release (0.23.0) publishes neither a 3.12 wheel nor an sdist.
+- `dlimp @ git+...` pins `tensorflow==2.15.0` itself, so relaxing only the
+  top-level pin moves the conflict rather than resolving it.
+- `sentencepiece==0.1.99` publishes wheels only up to cp311.
 
 This script relaxes the first two pins to the same TensorFlow line that
-`requirements-data.txt` already selects for 3.12, and drops the
-`tensorflow_graphics` entry so pip stops resolving `tensorflow-addons`.
-`bootstrap_colab.sh` then reinstalls `tensorflow_graphics` with `--no-deps`:
-`prismatic` only reaches `tensorflow_graphics.geometry.transformation`, whose
-import chain needs nothing beyond TensorFlow. The heavier `nn`/`rendering`
-subpackages that pull `tensorflow-addons` stay behind tfg's docs-only guard.
+`requirements-data.txt` already selects for 3.12, and drops the entries that
+cannot be resolved. `bootstrap_colab.sh` then reinstalls both dropped packages
+with `--no-deps`:
+
+- `prismatic` only reaches `tensorflow_graphics.geometry.transformation`, whose
+  import chain needs nothing beyond TensorFlow. The heavier `nn`/`rendering`
+  subpackages that pull `tensorflow-addons` stay behind tfg's docs-only guard.
+- `dlimp` declares only `tensorflow` and `tensorflow_datasets`, both already
+  satisfied by the relaxed line, so it has nothing left to install.
 
 On Python 3.10/3.11 this script is a no-op so the originally tested OpenVLA-OFT
 dependency set stays reproducible.
@@ -33,6 +39,10 @@ PY312_REPLACEMENTS: dict[str, str | None] = {
     "tensorflow": "tensorflow>=2.19,<2.20",
     "tensorflow_datasets": "tensorflow_datasets>=4.9.9,<4.10",
     "tensorflow_graphics": None,
+    "dlimp": None,
+    # 0.1.99 ships wheels only up to cp311, so 3.12 falls back to a source build
+    # that needs a C++ toolchain. 0.2.0 is the first release with a cp312 wheel.
+    "sentencepiece": "sentencepiece==0.2.0",
 }
 
 
@@ -44,9 +54,10 @@ def patch(path: Path, python_version: tuple[int, int]) -> dict[str, str | None]:
 
     applied: dict[str, str | None] = {}
     for package, replacement in PY312_REPLACEMENTS.items():
-        # Matches a dependency entry such as `    "tensorflow==2.15.0",` and, when
-        # the entry is dropped, its whole line so no stray comma is left behind.
-        entry = rf'"{re.escape(package)}\s*==[^"]*"'
+        # Matches a version pin such as `"tensorflow==2.15.0"` or a direct
+        # reference such as `"dlimp @ git+https://..."`. When the entry is
+        # dropped, the whole line goes so no stray comma is left behind.
+        entry = rf'"{re.escape(package)}\s*(?:==|@)[^"]*"'
         pattern = re.compile(rf"^[ \t]*{entry},?[ \t]*\r?\n" if replacement is None else entry, re.M)
         match = pattern.search(source)
         if match is None:

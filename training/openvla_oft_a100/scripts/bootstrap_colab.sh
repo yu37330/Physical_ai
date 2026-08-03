@@ -19,13 +19,21 @@ python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/patch_openvla_oft_depend
 
 python -m pip install -e "$WORKDIR"
 
-# The patch drops tensorflow_graphics on Python 3.12 to avoid the unresolvable
-# tensorflow-addons dependency. prismatic still imports
-# tensorflow_graphics.geometry.transformation, which needs only TensorFlow.
+# On Python 3.12 the patch drops two dependencies that pip cannot resolve, so
+# reinstall them without their own requirement sets. Both only need TensorFlow
+# and tensorflow_datasets, which the editable install above already provides.
+#
+#   tensorflow_graphics -> would pull tensorflow-addons (no 3.12 wheel, no sdist)
+#   dlimp               -> pins tensorflow==2.15.0 (no 3.12 wheel)
 if ! python -c "import tensorflow_graphics" 2>/dev/null; then
   python -m pip install --no-deps "tensorflow_graphics==2021.12.3"
 fi
+if ! python -c "import dlimp" 2>/dev/null; then
+  python -m pip install --no-deps \
+    "dlimp @ git+https://github.com/moojink/dlimp_openvla@${DLIMP_COMMIT:-040105d256bd28866cc6620621a3d5f7b6b91b46}"
+fi
 python -c "import tensorflow_graphics.geometry.transformation"
+python -c "import dlimp"
 
 if [[ "${INSTALL_FLASH_ATTN:-0}" == "1" ]]; then
   python -m pip install "flash-attn==2.5.5" --no-build-isolation
