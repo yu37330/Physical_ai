@@ -6,8 +6,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
+
+# Notebooks invoke this as `python scripts/run_libero_closed_loop.py`, which puts
+# `scripts/` on sys.path instead of the repo root. Add the root so `src` and
+# `submission` resolve without requiring PYTHONPATH.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.agent_cockpit.libero_closed_loop import (
     LiberoClosedLoopConfig,

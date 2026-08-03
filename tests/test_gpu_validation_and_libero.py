@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from src.agent_cockpit.dataset_explorer import EpisodeSample
 from src.agent_cockpit.gpu_validation import (
@@ -21,6 +25,28 @@ from src.agent_cockpit.libero_executor import (
 )
 from src.agent_cockpit.policy_adapter import InferenceResult
 from src.agent_cockpit.storage import TraceStore
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+@pytest.mark.parametrize(
+    "script",
+    ["scripts/run_colab_gpu_validation.py", "scripts/run_libero_closed_loop.py"],
+)
+def test_runner_scripts_import_without_pythonpath(script: str) -> None:
+    """Notebooks call these as `python scripts/...` with no PYTHONPATH set."""
+    env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    completed = subprocess.run(
+        [sys.executable, script, "--help"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "usage:" in completed.stdout
 
 
 class _FakeCuda:

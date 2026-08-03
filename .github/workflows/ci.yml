@@ -18,12 +18,17 @@ jobs:
   unit-and-contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the OpenVLA-OFT reference line, 3.12 is what Colab now runs.
+        python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install lightweight test dependencies
@@ -72,7 +77,8 @@ jobs:
             tests/test_agent_cockpit.py \
             tests/test_agent_cockpit_data_and_policy.py \
             tests/test_autonomous_replay.py \
-            tests/test_gpu_validation_and_libero.py
+            tests/test_gpu_validation_and_libero.py \
+            tests/test_colab_wrappers.py
 
   frontend-smoke:
     runs-on: ubuntu-latest
@@ -103,6 +109,11 @@ jobs:
   synthetic-rlds-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        # Covers both TensorFlow lines declared in requirements-data.txt.
+        python-version: ["3.10", "3.12"]
     env:
       TF_CPP_MIN_LOG_LEVEL: "2"
       CUDA_VISIBLE_DEVICES: ""
@@ -112,7 +123,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: training/openvla_oft_a100/requirements-data.txt
 

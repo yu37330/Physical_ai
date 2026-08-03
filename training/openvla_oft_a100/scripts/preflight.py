@@ -86,7 +86,7 @@ def main() -> None:
     path_checks = {str(path.relative_to(project_root)): path.is_file() for path in required_paths}
 
     checks = {
-        "python_3_10_or_3_11": sys.version_info[:2] in ((3, 10), (3, 11)),
+        "python_3_10_or_newer": sys.version_info[:2] >= (3, 10),
         "project_files_present": all(path_checks.values()),
         "git_commit_resolved": git.get("returncode") == 0 and bool(git.get("stdout")),
         "drive_mounted": drive_mounted,
@@ -97,7 +97,7 @@ def main() -> None:
         "a100_40gb": has_a100 and has_40gb,
     }
     required_check_names = [
-        "python_3_10_or_3_11",
+        "python_3_10_or_newer",
         "project_files_present",
         "git_commit_resolved",
         "drive_mounted",

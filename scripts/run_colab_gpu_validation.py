@@ -5,7 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+# Notebooks invoke this as `python scripts/run_colab_gpu_validation.py`, which puts
+# `scripts/` on sys.path instead of the repo root. Add the root so `src` resolves
+# without requiring PYTHONPATH.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.agent_cockpit.dataset_explorer import RLDSEpisodeReader
 from src.agent_cockpit.gpu_validation import (
