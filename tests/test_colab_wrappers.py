@@ -16,6 +16,7 @@ WRAPPERS = [
     "colab_dataset_prepare.sh",
     "colab_stage_a.sh",
     "colab_submission_validate.sh",
+    "colab_smoke.sh",
 ]
 
 def _find_bash() -> str | None:

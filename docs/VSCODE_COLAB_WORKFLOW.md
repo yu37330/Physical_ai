@@ -50,6 +50,37 @@ Terminal中心にすると、`%cd`と`!cd`の状態差、`set -euo pipefail`の�
 
 各NotebookのGate確認Cellで、Manifestとレポートの`status`を確認します。
 
+## 無料T4での事前スモーク
+
+A100を使う前に、無料枠のT4で配管だけを確認できます。7B Checkpointのダウンロード（十数GB）もDriveも不要です。
+
+```bash
+cd /content/Physical_ai
+bash training/openvla_oft_a100/scripts/colab_smoke.sh
+```
+
+確認できる範囲:
+
+- `bootstrap_colab.sh`（Python 3.12のTensorFlow依存Patchを含む）
+- 提出用Prismatic Vendor
+- 合成LeRobot Fixture → RLDS変換 → Source parity
+- PARC Dataset Registry Patch
+- `RLDSBatchTransform`。`AutoProcessor`と`AutoConfig`しか読まないため、Checkpointは**Processorとconfigの約2.5MBだけ**取得します
+
+確認できない範囲:
+
+- Stage A学習、Notebook 06のGPU Gate、提出ZIP
+
+これらは実7B Checkpointが必要で、T4の16GB VRAMには載りません。OpenVLA-OFTに小型の差し替えモデルは存在しないため、A100専用のままです。
+
+Notebook 00をT4で通したい場合は、A100要求だけ外します。
+
+```bash
+REQUIRE_A100=0 bash training/openvla_oft_a100/scripts/colab_preflight.sh
+```
+
+`a100_40gb`の判定自体はレポートに残り、必須Checkから外れるだけです。
+
 ## 環境変数
 
 `colab_env.sh`が全Scriptの共通契約です。既定値を変える場合だけ上書きします。
@@ -61,7 +92,8 @@ Terminal中心にすると、`%cd`と`!cd`の状態差、`set -euo pipefail`の�
 | `DRIVE_ROOT` | `/content/drive/MyDrive/PARC2026` | 永続領域 |
 | `OPENVLA_ROOT` | `/content/openvla-oft` | 固定OpenVLA-OFT |
 | `DATASET_PROFILE` | `mini` | `mini`（3 Episode）または`full`（800 Episode） |
-| `SKIP_PREFLIGHT` | `0` | `1`でA100 Gateを省略 |
+| `SKIP_PREFLIGHT` | `0` | `1`でPreflight全体を省略 |
+| `REQUIRE_A100` | `1` | `0`でA100 40GBを必須Checkから外す（T4スモーク用） |
 | `RUN_DYNAMIC_SMOKE` | `0` | `1`で提出物の動的スモークを実行 |
 
 `colab::persist`が既定256MB、Stage Aは既定1024MBを超えるDriveコピーを拒否します。大きな成果物をDriveへ入れて容量を枯渇させる事故を防ぐためです。

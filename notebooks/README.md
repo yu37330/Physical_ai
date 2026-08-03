@@ -16,6 +16,16 @@ VS Codeの公式Colab拡張機能とColab Terminalを使う手順は[VS Code + C
 | `05_agent_cockpit.ipynb` | — | Gradio UI（Dataset Explorer、推論、Agent、自律Replay） |
 | `06_gpu_libero_validation.ipynb` | `run_colab_gpu_validation.py` | 実Checkpoint GPU Gate、任意でLIBERO因果閉ループ1 Trial |
 
+## 無料T4での事前スモーク
+
+A100を確保する前に、`colab_smoke.sh`で配管だけ確認できます。7B Checkpointのダウンロードは不要で、Processorとconfigの約2.5MBだけ取得します。
+
+```bash
+bash training/openvla_oft_a100/scripts/colab_smoke.sh
+```
+
+Stage A学習、Notebook 06のGPU Gate、提出ZIPは実7B Checkpointが必要なためT4では確認できません。
+
 ## 保存先
 
 ```text
