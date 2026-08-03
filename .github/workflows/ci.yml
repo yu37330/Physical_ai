@@ -77,7 +77,8 @@ jobs:
             tests/test_agent_cockpit.py \
             tests/test_agent_cockpit_data_and_policy.py \
             tests/test_autonomous_replay.py \
-            tests/test_gpu_validation_and_libero.py
+            tests/test_gpu_validation_and_libero.py \
+            tests/test_colab_wrappers.py
 
   frontend-smoke:
     runs-on: ubuntu-latest
