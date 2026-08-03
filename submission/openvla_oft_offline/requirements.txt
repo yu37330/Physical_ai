@@ -1,6 +1,16 @@
 # PyPI packages only. Do not add git/http/local-path dependencies.
-# Torch is expected to be provided by the GPU scoring image; pin it only after
-# the organizer's CUDA/PyTorch image is confirmed.
+#
+# The scoring kit installs this file into its own interpreter
+# (validate_submission.py runs `sys.executable -m pip install -r requirements.txt`),
+# and that interpreter already has `torch==2.11.0+cpu` from the kit's setup.sh.
+# Without an explicit pin the 7B policy would therefore run on CPU and blow the
+# 10s per-request limit. The scoring environment is Python 3.10 on Ubuntu 22.04
+# with a single NVIDIA L4 24GB.
+#
+# --index-url and --extra-index-url are rejected by the validator, so the CUDA
+# build has to come from plain PyPI, where the linux x86_64 `torch` wheel is
+# already CUDA-enabled. 2.2.0 matches the version OpenVLA-OFT trains against.
+torch==2.2.0
 fastapi>=0.68
 uvicorn>=0.15
 msgpack>=1.0

@@ -34,7 +34,10 @@ jobs:
       - name: Install lightweight test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest numpy Pillow PyYAML jsonschema pyarrow
+          # fastapi/uvicorn/msgpack/requests let the submission viability test
+          # actually launch a policy server instead of skipping.
+          python -m pip install pytest numpy Pillow PyYAML jsonschema pyarrow \
+            fastapi uvicorn msgpack requests
 
       - name: Compile Python sources
         run: python -m compileall -q src frontend submission training scripts tests
@@ -78,7 +81,8 @@ jobs:
             tests/test_agent_cockpit_data_and_policy.py \
             tests/test_autonomous_replay.py \
             tests/test_gpu_validation_and_libero.py \
-            tests/test_colab_wrappers.py
+            tests/test_colab_wrappers.py \
+            tests/test_submission_viability.py
 
   frontend-smoke:
     runs-on: ubuntu-latest
