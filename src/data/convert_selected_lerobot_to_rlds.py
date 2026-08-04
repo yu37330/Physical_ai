@@ -48,11 +48,25 @@ def _read_vectors(path: Path, state_column: str, action_column: str) -> tuple[np
     return states, actions
 
 
-def _read_video(path: Path, *, image_size: int, rotate_180: bool) -> np.ndarray:
+def _decode_rgb_frames(path: Path) -> list[np.ndarray]:
+    """Decode a video to RGB frames.
+
+    The LIBERO-plus LeRobot videos are AV1, which the FFmpeg bundled with
+    opencv-python-headless cannot decode: it logs "Missing Sequence Header" and
+    then returns zero frames rather than failing, so a missing decoder looks like
+    an empty file. PyAV bundles libdav1d and handles AV1 as well as the mp4v used
+    by the synthetic fixtures, so prefer it and keep OpenCV as the fallback.
+    """
     try:
-        import cv2
-    except ImportError as exc:
-        raise RuntimeError("opencv-python-headless is required for video conversion") from exc
+        import av
+    except ImportError:
+        av = None
+
+    if av is not None:
+        with av.open(str(path)) as container:
+            return [frame.to_ndarray(format="rgb24") for frame in container.decode(video=0)]
+
+    import cv2
 
     capture = cv2.VideoCapture(str(path))
     if not capture.isOpened():
@@ -63,16 +77,31 @@ def _read_video(path: Path, *, image_size: int, rotate_180: bool) -> np.ndarray:
             ok, frame = capture.read()
             if not ok:
                 break
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            if rotate_180:
-                frame = np.rot90(frame, 2).copy()
-            if frame.shape[:2] != (image_size, image_size):
-                frame = cv2.resize(frame, (image_size, image_size), interpolation=cv2.INTER_AREA)
-            frames.append(frame.astype(np.uint8, copy=False))
+            frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     finally:
         capture.release()
-    if not frames:
-        raise ValueError(f"Video contains no frames: {path}")
+    return frames
+
+
+def _read_video(path: Path, *, image_size: int, rotate_180: bool) -> np.ndarray:
+    try:
+        import cv2
+    except ImportError as exc:
+        raise RuntimeError("opencv-python-headless is required for video conversion") from exc
+
+    decoded = _decode_rgb_frames(path)
+    if not decoded:
+        raise ValueError(
+            f"Video contains no frames: {path}. Install `av` if this is an AV1 file."
+        )
+
+    frames: list[np.ndarray] = []
+    for frame in decoded:
+        if rotate_180:
+            frame = np.rot90(frame, 2).copy()
+        if frame.shape[:2] != (image_size, image_size):
+            frame = cv2.resize(frame, (image_size, image_size), interpolation=cv2.INTER_AREA)
+        frames.append(frame.astype(np.uint8, copy=False))
     return np.stack(frames, axis=0)
 
 

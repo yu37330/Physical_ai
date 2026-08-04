@@ -142,4 +142,4 @@ jobs:
           python -m pip install pytest numpy
 
       - name: Run synthetic LeRobot to RLDS E2E
-        run: pytest -q tests/test_synthetic_rlds_e2e.py
+        run: pytest -q tests/test_synthetic_rlds_e2e.py tests/test_video_decoding.py
