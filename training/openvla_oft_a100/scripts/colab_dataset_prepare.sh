@@ -97,6 +97,15 @@ PY
   echo "Using processor-only checkpoint: $BASE_CHECKPOINT"
 fi
 
+# The full profile fetches about 2,400 files. Anonymous access does not finish
+# that, and huggingface_hub retries 429 internally, so the failure looks like the
+# download going quiet for minutes rather than an error. Settle the token here,
+# after the cheap argument checks and before anything long starts.
+if [[ "$DATASET_PROFILE" == "full" ]]; then
+  colab::section "Hugging Face token"
+  python -m src.data.hf_download
+fi
+
 colab::section "Download plan"
 PLAN="$DRIVE_DATASETS/${DATASET_PROFILE}_download_plan.json"
 python -m src.data.build_episode_download_plan \

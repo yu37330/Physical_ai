@@ -30,8 +30,62 @@ DEFAULT_RETRY_SECONDS = 15.0
 MAX_RETRY_SECONDS = 120.0
 
 
+# Below this many files an anonymous download finishes before the limit bites,
+# which keeps the 9-file mini profile usable without a token.
+BULK_DOWNLOAD_FILES = 200
+
+TOKEN_INSTRUCTIONS = (
+    "Set HF_TOKEN before a bulk download. In a notebook cell:\n"
+    "    import getpass, os\n"
+    '    os.environ["HF_TOKEN"] = getpass.getpass("HF token: ")\n'
+    "Never paste the token into a cell body; the notebook file is tracked in git.\n"
+    "Set ALLOW_ANONYMOUS_DOWNLOAD=1 to proceed anyway."
+)
+
+
 def token_is_configured() -> bool:
     return bool(os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN"))
+
+
+def check_token() -> dict[str, Any]:
+    """Report whether a token is set and actually accepted by the Hub.
+
+    A revoked or mistyped token is worse than none: huggingface_hub retries
+    internally before surfacing an error, so the download simply goes quiet for
+    minutes instead of failing. One whoami call settles it up front.
+    """
+    if not token_is_configured():
+        return {"configured": False, "valid": False, "user": None}
+
+    from huggingface_hub import HfApi
+    from huggingface_hub.errors import HfHubHTTPError
+
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    try:
+        info = HfApi().whoami(token=token)
+    except (HfHubHTTPError, OSError) as error:
+        return {"configured": True, "valid": False, "user": None, "error": str(error)}
+    return {"configured": True, "valid": True, "user": info.get("name")}
+
+
+def require_token_for_bulk(file_count: int) -> dict[str, Any]:
+    """Stop before a long download that anonymous access cannot finish."""
+    status = check_token()
+    if file_count < BULK_DOWNLOAD_FILES or os.environ.get("ALLOW_ANONYMOUS_DOWNLOAD") == "1":
+        return status
+
+    if not status["configured"]:
+        raise SystemExit(
+            f"{file_count} files is more than anonymous access will finish.\n"
+            + TOKEN_INSTRUCTIONS
+        )
+    if not status["valid"]:
+        raise SystemExit(
+            "HF_TOKEN is set but the Hub rejected it, so the download would stall "
+            "rather than fail.\n"
+            f"{status.get('error', '')}\n" + TOKEN_INSTRUCTIONS
+        )
+    return status
 
 
 def _retry_delay(error: Exception, attempt: int) -> float:
@@ -126,6 +180,7 @@ def download_files_verified(
     do it here and re-fetch what is missing rather than discovering it later.
     """
     local_dir = Path(local_dir)
+    token_status = require_token_for_bulk(len(relative_paths))
     snapshot_with_retry(
         repo_id=repo_id,
         repo_type=repo_type,
@@ -164,7 +219,23 @@ def download_files_verified(
         "requested_files": len(relative_paths),
         "repaired_files": sorted(set(repaired)),
         "verified": True,
+        "authenticated": token_status["valid"],
     }
+
+
+def main() -> None:
+    """`python -m src.data.hf_download` answers "is my token set and accepted?"."""
+    import json
+
+    status = check_token()
+    print(json.dumps(status, ensure_ascii=False, indent=2))
+    if not status["valid"]:
+        print("\n" + TOKEN_INSTRUCTIONS)
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()
 
 
 def resolve_local_dir(path: Path) -> Path:

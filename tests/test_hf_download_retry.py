@@ -37,15 +37,22 @@ def hub(monkeypatch: pytest.MonkeyPatch):
             raise outcome
         return outcome
 
+    class _Api:
+        """Accepts the token by default; tests that care override HfApi."""
+
+        def whoami(self, token=None):
+            return {"name": "test-user"}
+
     outcomes: list = []
     module = types.ModuleType("huggingface_hub")
     module.snapshot_download = snapshot_download
+    module.HfApi = _Api
     errors = types.ModuleType("huggingface_hub.errors")
     errors.HfHubHTTPError = _HfHubHTTPError
     monkeypatch.setitem(sys.modules, "huggingface_hub", module)
     monkeypatch.setitem(sys.modules, "huggingface_hub.errors", errors)
     monkeypatch.setenv("HF_TOKEN", "set-so-the-warning-is-quiet")
-    return types.SimpleNamespace(calls=calls, outcomes=outcomes)
+    return types.SimpleNamespace(calls=calls, outcomes=outcomes, module=module)
 
 
 def test_a_successful_download_is_not_retried(hub) -> None:
@@ -160,6 +167,64 @@ def test_verified_download_fails_when_a_file_never_arrives(hub, tmp_path) -> Non
             repo_id="x", repo_type="dataset", revision="rev",
             local_dir=tmp_path, relative_paths=wanted, repair_attempts=2,
         )
+
+
+def _stub_whoami(hub, result, error: Exception | None = None) -> None:
+    class _Api:
+        def whoami(self, token=None):
+            if error is not None:
+                raise error
+            return result
+
+    hub.module.HfApi = _Api
+
+
+def test_bulk_download_without_a_token_stops_before_downloading(
+    hub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Anonymous access cannot finish 2,400 files, and the failure mode is a
+    silent stall, so refuse rather than start."""
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+
+    with pytest.raises(SystemExit, match="HF_TOKEN"):
+        hf_download.require_token_for_bulk(2400)
+
+
+def test_a_small_download_still_works_anonymously(
+    hub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 9-file mini profile should not need a token."""
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+
+    status = hf_download.require_token_for_bulk(9)
+    assert status["configured"] is False
+
+
+def test_an_override_allows_anonymous_bulk(hub, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("ALLOW_ANONYMOUS_DOWNLOAD", "1")
+
+    assert hf_download.require_token_for_bulk(2400)["configured"] is False
+
+
+def test_a_rejected_token_is_caught_before_the_download(
+    hub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A revoked token is worse than none: the Hub retries internally and the
+    download goes quiet instead of failing."""
+    _stub_whoami(hub, None, error=_HfHubHTTPError("401 Unauthorized", _Response(401)))
+
+    with pytest.raises(SystemExit, match="rejected it"):
+        hf_download.require_token_for_bulk(2400)
+
+
+def test_an_accepted_token_reports_the_user(hub, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_whoami(hub, {"name": "someone"})
+
+    status = hf_download.require_token_for_bulk(2400)
+    assert status == {"configured": True, "valid": True, "user": "someone"}
 
 
 def test_missing_files_lists_only_absent_paths(tmp_path) -> None:
