@@ -81,6 +81,59 @@ REQUIRE_A100=0 bash training/openvla_oft_a100/scripts/colab_preflight.sh
 
 `a100_40gb`の判定自体はレポートに残り、必須Checkから外れるだけです。
 
+## セッションが落ちる場合
+
+Colabのセッションは頻繁に落ちます。落ち方によって失うものが違うので、切り分けて対処します。
+
+### ターミナルだけ切れた（VMは生きている）
+
+前景で走らせたコマンドはターミナルと一緒に死にます。**長いものは`nohup`で切り離してログへ流してください。**
+
+```bash
+cd /content/Physical_ai
+nohup bash training/openvla_oft_a100/scripts/colab_setup.sh > /content/work/setup.log 2>&1 &
+tail -f /content/work/setup.log
+```
+
+`tail`は`Ctrl+C`で抜けても本体は走り続けます。ターミナルが切れたら、繋ぎ直して`tail -f`し直すだけです。
+
+```bash
+tail -f /content/work/setup.log      # 進捗を再表示
+pgrep -af colab_setup.sh             # まだ走っているか確認
+```
+
+### VMは生きているがスクリプトをやり直したい
+
+`bootstrap_colab.sh`は冪等です。環境が揃っていれば10分のpip installを飛ばします。
+
+```bash
+python training/openvla_oft_a100/scripts/check_openvla_env.py
+```
+
+これが`status: ok`なら再構築は不要です。判定はimportの成否、numpyのメジャーバージョン、そしてtransformersがForkかPyPI版かまで見ます（`colab_action_parity.sh`はForkをPyPI版へ入れ替えるため、学習へ戻る前に検出できるようにしてあります）。
+
+強制的に作り直す場合は`FORCE_BOOTSTRAP=1`を付けます。
+
+### VMごと落ちた
+
+`/content`は消えるので作り直しです。Checkpointの再取得は1分程度、pip installが10分程度かかります。
+
+Driveの空きが足りず、15GBのCheckpointを退避しておくことはできません。復旧は次の1ブロックで済みます。
+
+```bash
+cd /content && rm -rf Physical_ai openvla-oft work
+git clone -b main https://github.com/yu37330/Physical_ai.git
+cd Physical_ai
+nohup bash -c '
+  REQUIRE_DRIVE=0 REQUIRE_A100=0 bash training/openvla_oft_a100/scripts/colab_setup.sh
+' > /content/setup.log 2>&1 &
+tail -f /content/setup.log
+```
+
+### アイドルで落とさない
+
+実行中のジョブがあればアイドル判定は起きにくいですが、待ち時間が長い場合はターミナルを開いたままにしてください。作業を終えたら`Colab: Remove Server`で明示的に落とすと、コンピューティングユニットの浪費を防げます。
+
 ## 環境変数
 
 `colab_env.sh`が全Scriptの共通契約です。既定値を変える場合だけ上書きします。
@@ -94,6 +147,9 @@ REQUIRE_A100=0 bash training/openvla_oft_a100/scripts/colab_preflight.sh
 | `DATASET_PROFILE` | `mini` | `mini`（3 Episode）または`full`（800 Episode） |
 | `SKIP_PREFLIGHT` | `0` | `1`でPreflight全体を省略 |
 | `REQUIRE_A100` | `1` | `0`でA100 40GBを必須Checkから外す（T4スモーク用） |
+| `REQUIRE_DRIVE` | `1` | `0`でDriveのmount要求を外す（計測のみの実行用） |
+| `FORCE_BOOTSTRAP` | `0` | `1`でOpenVLA-OFT環境を無条件に作り直す |
+| `USE_PYPI_TRANSFORMERS` | `1` | 提出計測時にForkをPyPI版へ入れ替える |
 | `RUN_DYNAMIC_SMOKE` | `0` | `1`で提出物の動的スモークを実行 |
 
 `colab::persist`が既定256MB、Stage Aは既定1024MBを超えるDriveコピーを拒否します。大きな成果物をDriveへ入れて容量を枯渇させる事故を防ぐためです。

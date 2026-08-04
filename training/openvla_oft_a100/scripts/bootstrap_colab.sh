@@ -5,6 +5,23 @@ OPENVLA_OFT_COMMIT="${OPENVLA_OFT_COMMIT:-e4287e94541f459edc4feabc4e181f537cd569
 WORKDIR="${WORKDIR:-/content/openvla-oft}"
 PROJECT_ROOT="${PROJECT_ROOT:-/content/Physical_ai}"
 
+STAMP="$WORKDIR/.parc_bootstrap_complete"
+
+# Colab sessions drop often. When the VM survives, redoing a 10 minute pip
+# install achieves nothing, so skip it -- but only after importing everything and
+# checking versions and provenance, never on the strength of the stamp alone.
+# colab_action_parity.sh swaps in PyPI transformers, and the check catches that
+# too, so training does not silently continue without the fork.
+if [[ "${FORCE_BOOTSTRAP:-0}" != "1" ]] \
+  && [[ -f "$STAMP" ]] \
+  && [[ "$(cat "$STAMP")" == "$OPENVLA_OFT_COMMIT" ]] \
+  && python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/check_openvla_env.py" > /dev/null 2>&1
+then
+  echo "OpenVLA-OFT environment already complete at $OPENVLA_OFT_COMMIT; skipping."
+  echo "Set FORCE_BOOTSTRAP=1 to rebuild it."
+  exit 0
+fi
+
 rm -rf "$WORKDIR"
 git clone https://github.com/moojink/openvla-oft.git "$WORKDIR"
 git -C "$WORKDIR" checkout "$OPENVLA_OFT_COMMIT"
@@ -51,6 +68,9 @@ python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/patch_finetune_component
   "$WORKDIR/vla-scripts/finetune.py"
 python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/verify_training_patch.py" \
   "$WORKDIR/vla-scripts/finetune.py"
+
+# Written last so a run interrupted partway never looks complete.
+echo "$OPENVLA_OFT_COMMIT" > "$STAMP"
 
 python - <<'PY'
 import json

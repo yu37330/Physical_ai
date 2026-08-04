@@ -78,6 +78,7 @@ jobs:
             tests/test_offline_runtime.py \
             tests/test_offline_runtime_registration.py \
             tests/test_action_parity_tools.py \
+            tests/test_openvla_env_check.py \
             tests/test_pre_gpu_readiness.py \
             tests/test_agent_cockpit.py \
             tests/test_agent_cockpit_data_and_policy.py \
