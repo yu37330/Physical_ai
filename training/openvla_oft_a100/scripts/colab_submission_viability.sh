@@ -46,7 +46,7 @@ if [[ "${STAGE_BASE_CHECKPOINT:-0}" == "1" ]]; then
     exit 1
   fi
   mkdir -p "$MODEL_TARGET"
-  rsync -a --delete "$BASE_CHECKPOINT/" "$MODEL_TARGET/"
+  colab::sync_tree "$BASE_CHECKPOINT" "$MODEL_TARGET"
   echo "NOTE: base weights only. Not submittable; measurement use only."
 fi
 

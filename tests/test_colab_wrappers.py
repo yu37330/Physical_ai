@@ -166,6 +166,17 @@ def test_persist_refuses_large_artifacts(tmp_path: Path, colab_env: dict[str, st
     assert not destination.exists()
 
 
+def test_shell_dataset_identifiers_match_the_python_contract() -> None:
+    """colab_env.sh builds the Drive RLDS path from these; if they drift from
+    rlds_contract.py the restore silently misses and an hour of conversion is
+    repeated."""
+    from src.data.rlds_contract import DATASET_NAME, DATASET_VERSION
+
+    script = (SCRIPTS / "colab_env.sh").read_text(encoding="utf-8")
+    assert f'DATASET_NAME="${{DATASET_NAME:-{DATASET_NAME}}}"' in script
+    assert f'DATASET_VERSION="${{DATASET_VERSION:-{DATASET_VERSION}}}"' in script
+
+
 def test_notebooks_delegate_to_the_same_wrappers() -> None:
     """Notebook cells and Colab Terminal must not drift apart."""
     expected = {

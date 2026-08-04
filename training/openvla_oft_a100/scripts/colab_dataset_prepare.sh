@@ -15,6 +15,29 @@ source "$SCRIPT_DIR/colab_env.sh"
 cd "$PROJECT_ROOT"
 colab::require_drive
 
+DRIVE_RLDS="$DRIVE_RLDS_ROOT/$DATASET_PROFILE"
+RLDS_BUILDER="$RLDS_ROOT/$DATASET_NAME/$DATASET_VERSION"
+
+# Converting 800 episodes costs about an hour and /content does not survive the
+# VM. If a finished dataset is already on Drive, copy it back instead of
+# downloading and converting again.
+if [[ "${PERSIST_RLDS:-1}" == "1" ]] \
+  && [[ ! -f "$RLDS_BUILDER/dataset_info.json" ]] \
+  && [[ -f "$DRIVE_RLDS/$DATASET_NAME/$DATASET_VERSION/dataset_info.json" ]] \
+  && [[ "${FORCE_RECONVERT:-0}" != "1" ]]
+then
+  colab::section "Restoring RLDS from Drive"
+  colab::sync_tree "$DRIVE_RLDS" "$RLDS_ROOT"
+  echo "Restored: $RLDS_BUILDER"
+  echo "Set FORCE_RECONVERT=1 to rebuild it from source instead."
+  colab::report_disk
+  colab::section "Dataset prepare complete (restored)"
+  echo "RLDS: $RLDS_BUILDER"
+  echo "03_stage_a_train reads DATA_ROOT_DIR=$RLDS_ROOT"
+  exit 0
+fi
+
+
 FULL_SELECTION="${FULL_SELECTION:-$DRIVE_DATASETS/libero_plus_selection_v001.json}"
 if [[ ! -f "$FULL_SELECTION" ]]; then
   # Deterministic from the pinned revision and seed, and metadata-only, so
@@ -131,6 +154,13 @@ COMPATIBILITY_SAMPLES_PER_SPLIT="${COMPATIBILITY_SAMPLES_PER_SPLIT:-4}" \
 PROMOTE_MANIFEST="$PROMOTE_MANIFEST" \
 MANIFEST_FILE="${MANIFEST_FILE:-}" \
   bash training/openvla_oft_a100/scripts/prepare_stage_a_rlds.sh
+
+if [[ "${PERSIST_RLDS:-1}" == "1" ]]; then
+  colab::section "Persisting RLDS to Drive"
+  # Failing here must not discard an hour of conversion, so do not let the
+  # free-space refusal take the script down.
+  colab::persist_dataset "$RLDS_ROOT" "$DRIVE_RLDS" || true
+fi
 
 colab::report_disk
 colab::section "Dataset prepare complete"
