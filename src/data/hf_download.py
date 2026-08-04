@@ -29,6 +29,12 @@ MAX_ATTEMPTS = 6
 DEFAULT_RETRY_SECONDS = 15.0
 MAX_RETRY_SECONDS = 120.0
 
+# huggingface_hub reads this in constants.py at import time, so it has to be set
+# before the hub is imported anywhere. Without it a stalled transfer hangs
+# indefinitely instead of raising, which is what left a 2,400 file download
+# frozen at 1,994 with the process alive and nothing to retry on.
+os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "30")
+
 
 # Below this many files an anonymous download finishes before the limit bites,
 # which keeps the 9-file mini profile usable without a token.
@@ -104,6 +110,24 @@ def _is_rate_limit(error: Exception) -> bool:
     return "429" in str(error) or "rate limit" in str(error).lower()
 
 
+def _is_transient(error: Exception) -> bool:
+    """Whether resuming is worth a try.
+
+    A 2,400 file download stopped dead at 1,994 with the process alive and no
+    output for minutes: a connection hung rather than failed. Nothing was raised,
+    so retrying on 429 alone never fired. With HF_HUB_DOWNLOAD_TIMEOUT set, that
+    hang surfaces as a timeout, and timeouts and dropped connections are exactly
+    the case where resuming works, since completed files are kept.
+    """
+    if _is_rate_limit(error):
+        return True
+    name = type(error).__name__.lower()
+    if any(term in name for term in ("timeout", "connection", "protocol", "incomplete")):
+        return True
+    text = str(error).lower()
+    return any(term in text for term in ("timed out", "timeout", "connection reset", "connection aborted"))
+
+
 def _warn_without_token() -> None:
     if not token_is_configured():
         print(
@@ -120,16 +144,20 @@ def _call_with_retry(operation, kwargs: dict[str, Any], *, serialize_on_retry: b
     for attempt in range(MAX_ATTEMPTS):
         try:
             return operation(**kwargs)
-        except HfHubHTTPError as error:
-            if not _is_rate_limit(error):
+        except (HfHubHTTPError, OSError) as error:
+            # OSError covers requests' timeout and connection errors, which is how
+            # a stalled transfer surfaces once HF_HUB_DOWNLOAD_TIMEOUT is set.
+            if not _is_transient(error):
                 raise
             last_error = error
             if attempt == MAX_ATTEMPTS - 1:
                 break
             delay = _retry_delay(error, attempt)
+            reason = "Rate limited by" if _is_rate_limit(error) else "Transfer stalled against"
             print(
-                f"Rate limited by Hugging Face; retrying in {delay:.0f}s "
-                f"(attempt {attempt + 2}/{MAX_ATTEMPTS}). Completed files are kept.",
+                f"{reason} Hugging Face ({type(error).__name__}); retrying in "
+                f"{delay:.0f}s (attempt {attempt + 2}/{MAX_ATTEMPTS}). "
+                "Completed files are kept.",
                 flush=True,
             )
             time.sleep(delay)
@@ -138,7 +166,7 @@ def _call_with_retry(operation, kwargs: dict[str, Any], *, serialize_on_retry: b
                 kwargs["max_workers"] = 1
 
     raise RuntimeError(
-        "Hugging Face kept rate limiting the download. Set HF_TOKEN to raise the "
+        "Hugging Face downloads kept failing. Set HF_TOKEN to raise the rate "
         "limit, then re-run; already downloaded files are reused."
     ) from last_error
 

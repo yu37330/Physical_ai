@@ -11,12 +11,14 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
 
+    # Imported first: it sets HF_HUB_DOWNLOAD_TIMEOUT, which huggingface_hub only
+    # reads at its own import time.
+    from .hf_download import download_files_verified
+
     try:
         import huggingface_hub  # noqa: F401
     except ImportError as exc:
         raise SystemExit("Install huggingface_hub to download selected episodes") from exc
-
-    from .hf_download import download_files_verified
 
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
     source = plan["source"]

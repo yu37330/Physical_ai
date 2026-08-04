@@ -78,6 +78,40 @@ def test_rate_limiting_is_retried_and_drops_to_one_worker(hub) -> None:
     assert hub.calls[1]["max_workers"] == 1
 
 
+def test_a_stalled_transfer_is_retried(hub) -> None:
+    """The 2,400 file download froze at 1,994 with the process alive. With a
+    download timeout set that surfaces as a timeout, and resuming works because
+    completed files are kept."""
+    hub.outcomes.extend([TimeoutError("The read operation timed out"), "/local/path"])
+
+    assert hf_download.snapshot_with_retry(repo_id="x") == "/local/path"
+    assert len(hub.calls) == 2
+
+
+def test_a_dropped_connection_is_retried(hub) -> None:
+    hub.outcomes.extend([ConnectionResetError("Connection reset by peer"), "/local/path"])
+
+    assert hf_download.snapshot_with_retry(repo_id="x") == "/local/path"
+    assert len(hub.calls) == 2
+
+
+def test_an_unrelated_os_error_is_not_retried(hub) -> None:
+    """A full disk will not fix itself; retrying only delays the real message."""
+    hub.outcomes.append(OSError("No space left on device"))
+
+    with pytest.raises(OSError, match="No space left"):
+        hf_download.snapshot_with_retry(repo_id="x")
+    assert len(hub.calls) == 1
+
+
+def test_a_download_timeout_is_configured_before_the_hub_loads() -> None:
+    """huggingface_hub reads this at import time, so importing hf_download first
+    is what makes a hang become a timeout."""
+    import os
+
+    assert os.environ["HF_HUB_DOWNLOAD_TIMEOUT"]
+
+
 def test_other_http_errors_are_not_retried(hub) -> None:
     """A 404 will never succeed on retry; failing immediately keeps the message."""
     hub.outcomes.append(_HfHubHTTPError("404 Client Error: Not Found", _Response(404)))

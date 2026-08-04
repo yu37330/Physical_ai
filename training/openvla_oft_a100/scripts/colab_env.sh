@@ -33,6 +33,10 @@ DRIVE_EXPERIMENTS="$DRIVE_ROOT/40_experiments"
 DRIVE_DATASETS="$DRIVE_EXPERIMENTS/datasets"
 DRIVE_SUBMISSIONS="$DRIVE_ROOT/60_submissions"
 
+# A stalled Hugging Face transfer otherwise hangs forever with the process alive
+# and nothing raised to retry on. huggingface_hub reads this at import time.
+export HF_HUB_DOWNLOAD_TIMEOUT="${HF_HUB_DOWNLOAD_TIMEOUT:-30}"
+
 DATASET_NAME="${DATASET_NAME:-parc_libero_plus_selected}"
 DATASET_MIXTURE="${DATASET_MIXTURE:-parc_stage_a_plus_only}"
 

@@ -13,12 +13,14 @@ def main() -> None:
     parser.add_argument("--format", choices=("lerobot_v2_1", "lerobot_v3"), required=True)
     args = parser.parse_args()
 
+    # Imported first: it sets HF_HUB_DOWNLOAD_TIMEOUT, which huggingface_hub only
+    # reads at its own import time.
+    from .hf_download import snapshot_with_retry
+
     try:
         from huggingface_hub import HfApi
     except ImportError as exc:
         raise SystemExit("Install huggingface_hub to download dataset metadata") from exc
-
-    from .hf_download import snapshot_with_retry
 
     patterns = ["meta/info.json"]
     if args.format == "lerobot_v2_1":
