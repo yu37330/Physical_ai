@@ -33,20 +33,23 @@ def test_episode_and_batch_contract() -> None:
     assert steps[-1]["is_last"] is True
     assert steps[-1]["reward"] == np.float32(1.0)
 
+    # PaddedCollatorForActionPrediction concatenates the wrist tensor into
+    # pixel_values along dim=1, so a collated batch has one image tensor with the
+    # channels of both cameras. Asserting a separate pixel_values_wrist key here
+    # is what made the wrong contract look verified.
     report = validate_batch_contract(
         {
-            "pixel_values": np.zeros((1, 3, 224, 224), dtype=np.float32),
-            "pixel_values_wrist": np.zeros((1, 3, 224, 224), dtype=np.float32),
+            "pixel_values": np.zeros((1, 6, 224, 224), dtype=np.float32),
             "input_ids": np.zeros((1, 64), dtype=np.int64),
             "labels": np.zeros((1, 64), dtype=np.int64),
             "actions": np.zeros((1, 8, 7), dtype=np.float32),
             "proprio": np.zeros((1, 8), dtype=np.float32),
-        }
+        },
+        single_image_channels=3,
     )
     assert report["actions_shape"] == [1, 8, 7]
     assert report["proprio_shape"] == [1, 8]
-    assert report["front_pixel_values"]["shape"] == [1, 3, 224, 224]
-    assert report["wrist_pixel_values"]["shape"] == [1, 3, 224, 224]
+    assert report["pixel_values"]["shape"] == [1, 6, 224, 224]
 
 
 def test_manifest_promoted_only_after_parity_and_compatibility_pass() -> None:

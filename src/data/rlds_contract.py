@@ -147,10 +147,38 @@ def build_rlds_steps(
     return steps
 
 
-def validate_batch_contract(batch: Mapping[str, Any]) -> dict[str, Any]:
+def validate_transform_contract(sample: Mapping[str, Any]) -> dict[str, Any]:
+    """Check a single RLDSBatchTransform output, before collation.
+
+    `pixel_values_wrist` only exists at this level. PaddedCollatorForActionPrediction
+    concatenates it into `pixel_values` along dim=1 and drops the separate key, so
+    a collated batch cannot show whether the wrist camera made it through.
+    """
+    required = {"pixel_values", "pixel_values_wrist", "input_ids", "labels", "actions"}
+    missing = sorted(required.difference(sample))
+    if missing:
+        raise KeyError(f"RLDSBatchTransform output is missing: {missing}")
+
+    front = _as_array(sample["pixel_values"], name="pixel_values")
+    wrist = _as_array(sample["pixel_values_wrist"], name="pixel_values_wrist")
+    if front.shape != wrist.shape:
+        raise ValueError(
+            f"Front and wrist pixel_values must match: {front.shape} != {wrist.shape}"
+        )
+    return {
+        "front_pixel_values": _tensor_tree_summary(sample["pixel_values"], name="pixel_values"),
+        "wrist_pixel_values": _tensor_tree_summary(
+            sample["pixel_values_wrist"], name="pixel_values_wrist"
+        ),
+        "single_image_channels": int(front.shape[0]),
+    }
+
+
+def validate_batch_contract(
+    batch: Mapping[str, Any], *, single_image_channels: int | None = None
+) -> dict[str, Any]:
     required = {
         "pixel_values",
-        "pixel_values_wrist",
         "input_ids",
         "labels",
         "actions",
@@ -158,7 +186,18 @@ def validate_batch_contract(batch: Mapping[str, Any]) -> dict[str, Any]:
     }
     missing = sorted(required.difference(batch))
     if missing:
-        raise KeyError(f"RLDSBatchTransform output is missing: {missing}")
+        raise KeyError(f"Collated batch is missing: {missing}")
+
+    if single_image_channels is not None:
+        pixels = _as_array(batch["pixel_values"], name="pixel_values")
+        expected = 2 * single_image_channels
+        # The collator stacks front and wrist on dim=1. Half the expected channels
+        # means the wrist stream was dropped without any key going missing.
+        pixel_channels = int(pixels.shape[1])
+        if pixel_channels != expected:
+            raise ValueError(
+                f"Expected {expected} pixel channels for two cameras, got {pixel_channels}"
+            )
 
     actions = _as_array(batch["actions"], name="actions")
     proprio = _as_array(batch["proprio"], name="proprio")
@@ -172,10 +211,9 @@ def validate_batch_contract(batch: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("Transformed actions/proprio contain NaN or Inf")
 
     return {
-        "front_pixel_values": _tensor_tree_summary(batch["pixel_values"], name="pixel_values"),
-        "wrist_pixel_values": _tensor_tree_summary(
-            batch["pixel_values_wrist"], name="pixel_values_wrist"
-        ),
+        # Front and wrist are concatenated here; validate_transform_contract
+        # reports them separately.
+        "pixel_values": _tensor_tree_summary(batch["pixel_values"], name="pixel_values"),
         "input_ids_shape": list(_as_array(batch["input_ids"], name="input_ids").shape),
         "labels_shape": list(_as_array(batch["labels"], name="labels").shape),
         "actions_shape": list(actions.shape),

@@ -75,6 +75,7 @@ jobs:
           pytest -q \
             tests/test_dataset_pipeline.py \
             tests/test_rlds_contract.py \
+            tests/test_rlds_batch_contract.py \
             tests/test_offline_runtime.py \
             tests/test_offline_runtime_registration.py \
             tests/test_action_parity_tools.py \
