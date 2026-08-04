@@ -60,6 +60,19 @@ fi
 colab::section "Submission dependencies"
 python -m pip install -q -r "$SUBMISSION_DIR/requirements.txt"
 
+# bootstrap_colab.sh installs the OpenVLA-OFT transformers fork, which reports
+# version 4.40.1 just like the PyPI build, so the line above is a no-op and the
+# measurement would silently run against the fork. The scoring image has no fork:
+# it installs PyPI transformers, where bidirectional_attention.py has to
+# reproduce what the fork does natively. Swap it in so that path is what gets
+# measured.
+if [[ "${USE_PYPI_TRANSFORMERS:-1}" == "1" ]]; then
+  colab::section "Replacing the OpenVLA-OFT transformers fork with the PyPI build"
+  echo "WARNING: this leaves the training environment without the fork."
+  echo "         Re-run colab_setup.sh before training in this session."
+  python -m pip install -q --force-reinstall --no-deps "transformers==4.40.1"
+fi
+
 colab::section "Measuring"
 python scripts/measure_submission_viability.py \
   --submission-dir "$SUBMISSION_DIR" \

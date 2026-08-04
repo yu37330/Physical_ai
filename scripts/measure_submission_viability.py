@@ -133,6 +133,31 @@ def directory_bytes(path: Path) -> int:
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
 
 
+def transformers_provenance() -> dict[str, Any]:
+    """Distinguish PyPI transformers from the OpenVLA-OFT git fork.
+
+    Both report version 4.40.1, so `pip install transformers==4.40.1` is a no-op
+    when the fork is already present. The scoring image has no fork and installs
+    the PyPI build, where the bidirectional attention patch must do the work the
+    fork does natively. Measuring against the fork would hide that difference.
+    """
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    try:
+        dist = distribution("transformers")
+    except PackageNotFoundError:
+        return {"installed": False}
+    # pip writes direct_url.json only for VCS/URL/local installs.
+    direct_url = dist.read_text("direct_url.json")
+    return {
+        "installed": True,
+        "version": dist.version,
+        "from_git_fork": direct_url is not None,
+        "direct_url": direct_url.strip() if direct_url else None,
+        "matches_scoring_environment": direct_url is None,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--submission-dir", type=Path, required=True)
@@ -283,6 +308,7 @@ def main() -> None:
         "pass": not contract_failures,
     }
     report["vram"] = vram.report()
+    report["environment"] = {"transformers": transformers_provenance()}
 
     report["size"] = {"submission_dir_bytes": directory_bytes(submission_dir)}
     if args.zip:

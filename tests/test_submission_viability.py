@@ -142,6 +142,44 @@ def test_wrong_shape_fails_the_contract_gate(tmp_path: Path) -> None:
     assert report["action_contract"]["failures"][0]["shape"] == [6]
 
 
+def _load_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("viability", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize(
+    ("direct_url", "from_fork"),
+    [
+        (None, False),
+        ('{"url": "https://github.com/moojink/transformers-openvla-oft.git"}', True),
+    ],
+)
+def test_transformers_provenance_separates_the_fork_from_pypi(
+    monkeypatch: pytest.MonkeyPatch, direct_url: str | None, from_fork: bool
+) -> None:
+    """Both builds report 4.40.1, so version alone cannot tell them apart."""
+    module = _load_module()
+
+    class _Dist:
+        version = "4.40.1"
+
+        def read_text(self, name: str) -> str | None:
+            return direct_url if name == "direct_url.json" else None
+
+    monkeypatch.setattr("importlib.metadata.distribution", lambda name: _Dist())
+
+    result = module.transformers_provenance()
+    assert result["installed"] is True
+    assert result["version"] == "4.40.1"
+    assert result["from_git_fork"] is from_fork
+    # The scoring image installs from PyPI, so only that case matches it.
+    assert result["matches_scoring_environment"] is not from_fork
+
+
 def test_observation_matches_the_official_contract(tmp_path: Path) -> None:
     """運営 pipeline/remote_policy.py と同じ形式で観測を送っていることを確認する。"""
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
