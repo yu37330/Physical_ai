@@ -83,6 +83,29 @@ REQUIRE_A100=0 bash training/openvla_oft_a100/scripts/colab_preflight.sh
 
 `a100_40gb`の判定自体はレポートに残り、必須Checkから外れるだけです。
 
+## Hugging Face のレート制限（HF_TOKEN）
+
+800 Episodeの取得は約2,400ファイルのリクエストになり、匿名アクセスは途中で止まります。
+
+```text
+429 Too Many Requests ... We had to rate limit your IP
+```
+
+`snapshot_with_retry`がRetry-Afterを見て再試行し、再試行時はworkerを1本に落としますが、**根本的な対処はHF_TOKENの設定**です。認証済みリクエストは上限が大幅に緩みます。エラー本文自身がそう案内しています。
+
+Colab拡張機能では`userdata.get()`（Colab Secrets）が使えないため、Notebookのセルで入力します。**Tokenをセルへ直接書かないでください。** Notebookに保存されて共有事故につながります。
+
+```python
+import getpass, os
+os.environ["HF_TOKEN"] = getpass.getpass("HF token: ")
+```
+
+`getpass`は入力を表示せず、Notebookにも残りません。Tokenは[Hugging Faceのアカウント設定](https://huggingface.co/settings/tokens)でread権限のものを発行します。
+
+同じKernelから起動したプロセスへは環境変数が引き継がれるので、以降のセルで`!bash ...`を呼ぶ分にはこれで足ります。Colab Terminalは別プロセスなので、そちら側で実行する場合は`huggingface-cli login`を使ってください。
+
+再開時、ダウンロード済みのファイルはスキップされます。制限に当たっても最初からやり直しにはなりません。
+
 ## セッションが落ちる場合
 
 ### 長い処理はNotebookのCellから実行する（最重要）

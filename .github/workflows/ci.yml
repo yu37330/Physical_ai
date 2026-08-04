@@ -81,6 +81,7 @@ jobs:
             tests/test_action_parity_tools.py \
             tests/test_openvla_env_check.py \
             tests/test_data_modules_importable.py \
+            tests/test_hf_download_retry.py \
             tests/test_pre_gpu_readiness.py \
             tests/test_agent_cockpit.py \
             tests/test_agent_cockpit_data_and_policy.py \

@@ -12,13 +12,17 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        from huggingface_hub import snapshot_download
+        import huggingface_hub  # noqa: F401
     except ImportError as exc:
         raise SystemExit("Install huggingface_hub to download selected episodes") from exc
 
+    from .hf_download import snapshot_with_retry
+
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
     source = plan["source"]
-    local = snapshot_download(
+    # 800 episodes is roughly 2,400 files, which trips Hugging Face's anonymous
+    # rate limit partway through.
+    local = snapshot_with_retry(
         repo_id=source["repo_id"],
         repo_type="dataset",
         revision=source["resolved_revision"],

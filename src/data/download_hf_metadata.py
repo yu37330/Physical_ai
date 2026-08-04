@@ -14,9 +14,11 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        from huggingface_hub import HfApi, snapshot_download
+        from huggingface_hub import HfApi
     except ImportError as exc:
         raise SystemExit("Install huggingface_hub to download dataset metadata") from exc
+
+    from .hf_download import snapshot_with_retry
 
     patterns = ["meta/info.json"]
     if args.format == "lerobot_v2_1":
@@ -27,7 +29,7 @@ def main() -> None:
     api = HfApi()
     info = api.dataset_info(args.repo_id, revision=args.revision, files_metadata=False)
     resolved_revision = info.sha
-    local = snapshot_download(
+    local = snapshot_with_retry(
         repo_id=args.repo_id,
         repo_type="dataset",
         revision=resolved_revision,
