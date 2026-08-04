@@ -39,6 +39,20 @@ if [[ "$STAGE" == "s2" ]] && ! compgen -G "$S1_RUN_DIR/*/action_head--*checkpoin
   exit 1
 fi
 
+# Last, because it imports torch and is slower than the checks above.
+#
+# colab_action_parity.sh and colab_submission_viability.sh both replace the
+# OpenVLA-OFT transformers fork with the PyPI build. Training on the PyPI build
+# would silently use causal attention while the submission runtime applies the
+# bidirectional patch, so the model would be trained under different semantics
+# than it is evaluated with. Nothing would error; only the score would suffer.
+if ! python training/openvla_oft_a100/scripts/check_openvla_env.py; then
+  echo >&2
+  echo "The OpenVLA-OFT environment is not ready for training." >&2
+  echo "Run colab_setup.sh to restore it, then re-run this script." >&2
+  exit 1
+fi
+
 RUN_DIR="$RUN_ROOT/$RUN_NAME"
 mkdir -p "$RUN_DIR"
 

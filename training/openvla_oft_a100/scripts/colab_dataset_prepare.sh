@@ -60,6 +60,43 @@ case "$DATASET_PROFILE" in
     ;;
 esac
 
+# validate_rlds_batch_transform.py reads AutoProcessor and AutoConfig only, never
+# the weights, so dataset preparation does not need the 15GB checkpoint. On a
+# runtime that has not run colab_setup.sh -- a free T4, say, since none of this
+# path touches the GPU -- fetch just the processor files instead.
+if [[ ! -d "$BASE_CHECKPOINT" ]] || [[ "${PROCESSOR_ONLY_CHECKPOINT:-0}" == "1" ]]; then
+  BASE_CHECKPOINT="$WORK_ROOT/models/openvla_oft_plus_processor"
+  if [[ ! -f "$BASE_CHECKPOINT/config.json" ]]; then
+    colab::section "Processor and config only (no weights)"
+    mkdir -p "$BASE_CHECKPOINT"
+    CHECKPOINT_REPO="${CHECKPOINT_REPO:-Sylvest/openvla-7b-oft-finetuned-libero-plus-mixdata}" \
+    PROCESSOR_DIR="$BASE_CHECKPOINT" python - <<'PY'
+import os
+
+from huggingface_hub import snapshot_download
+
+path = snapshot_download(
+    repo_id=os.environ["CHECKPOINT_REPO"],
+    local_dir=os.environ["PROCESSOR_DIR"],
+    allow_patterns=[
+        "config.json",
+        "generation_config.json",
+        "preprocessor_config.json",
+        "processor_config.json",
+        "special_tokens_map.json",
+        "added_tokens.json",
+        "tokenizer*",
+        "dataset_statistics.json",
+        # trust_remote_code=True loads the custom prismatic classes from here.
+        "*.py",
+    ],
+)
+print("Processor files at:", path)
+PY
+  fi
+  echo "Using processor-only checkpoint: $BASE_CHECKPOINT"
+fi
+
 colab::section "Download plan"
 PLAN="$DRIVE_DATASETS/${DATASET_PROFILE}_download_plan.json"
 python -m src.data.build_episode_download_plan \

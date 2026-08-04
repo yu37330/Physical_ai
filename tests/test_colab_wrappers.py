@@ -73,10 +73,12 @@ def colab_env(tmp_path: Path) -> dict[str, str]:
     """A fake Colab layout: empty work root, mounted but empty Drive."""
     (tmp_path / "work").mkdir()
     (tmp_path / "drive").mkdir()
+    # Forward slashes: bash treats the backslashes in a Windows path as glob
+    # escapes, so the S1 checkpoint lookup would never match.
     return {
-        "PROJECT_ROOT": str(REPO_ROOT),
-        "WORK_ROOT": str(tmp_path / "work"),
-        "DRIVE_ROOT": str(tmp_path / "drive"),
+        "PROJECT_ROOT": REPO_ROOT.as_posix(),
+        "WORK_ROOT": (tmp_path / "work").as_posix(),
+        "DRIVE_ROOT": (tmp_path / "drive").as_posix(),
     }
 
 
@@ -96,6 +98,24 @@ def test_stage_a_refuses_without_converted_rlds(colab_env: dict[str, str]) -> No
     completed = _run("colab_stage_a.sh", ["s1"], colab_env)
     assert completed.returncode == 1
     assert "RLDS builder directory not found" in completed.stderr
+
+
+def test_stage_a_refuses_a_broken_openvla_environment(colab_env: dict[str, str]) -> None:
+    """colab_action_parity.sh swaps the transformers fork for the PyPI build.
+    Training on that would use causal attention while the submission runtime uses
+    bidirectional, without erroring, so refuse before a long run starts."""
+    builder = Path(colab_env["WORK_ROOT"]) / "rlds/mini/parc_libero_plus_selected/1.0.0"
+    builder.mkdir(parents=True)
+    (builder / "dataset_info.json").write_text("{}", encoding="utf-8")
+    (Path(colab_env["WORK_ROOT"]) / "models/openvla_oft_plus_base").mkdir(parents=True)
+    s1_checkpoint = Path(colab_env["WORK_ROOT"]) / "runs/stage_a_s1_head_proprio_100/step"
+    s1_checkpoint.mkdir(parents=True)
+    (s1_checkpoint / "action_head--100_checkpoint.pt").write_bytes(b"")
+
+    completed = _run("colab_stage_a.sh", ["s2"], colab_env)
+
+    assert completed.returncode == 1
+    assert "not ready for training" in completed.stderr
 
 
 def test_stage_a_refuses_s2_before_s1_checkpoint(colab_env: dict[str, str]) -> None:
