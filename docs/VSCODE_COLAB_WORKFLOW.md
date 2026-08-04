@@ -91,6 +91,7 @@ Colabのセッションは頻繁に落ちます。落ち方によって失うも
 
 ```bash
 cd /content/Physical_ai
+mkdir -p /content/work
 nohup bash training/openvla_oft_a100/scripts/colab_setup.sh > /content/work/setup.log 2>&1 &
 tail -f /content/work/setup.log
 ```
@@ -121,7 +122,7 @@ python training/openvla_oft_a100/scripts/check_openvla_env.py
 Driveの空きが足りず、15GBのCheckpointを退避しておくことはできません。復旧は次の1ブロックで済みます。
 
 ```bash
-cd /content && rm -rf Physical_ai openvla-oft work
+cd /content && rm -rf Physical_ai openvla-oft work && mkdir -p work
 git clone -b main https://github.com/yu37330/Physical_ai.git
 cd Physical_ai
 nohup bash -c '
