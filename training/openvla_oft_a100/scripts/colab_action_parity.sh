@@ -35,6 +35,10 @@ mkdir -p "$OUT_ROOT"
 colab::section "Reference: OpenVLA-OFT fork, native bidirectional attention"
 python -m pip install -q --force-reinstall --no-deps \
   "transformers @ git+https://github.com/moojink/transformers-openvla-oft.git@${TRANSFORMERS_FORK_COMMIT:-bc339d9ad707454c0c115970db43c260067c61ab}"
+# Both builds report 4.40.1. If a swap silently failed, both captures would use
+# the same transformers and the comparison would pass for the wrong reason, so
+# assert the build before spending a capture on it.
+python training/openvla_oft_a100/scripts/check_openvla_env.py > /dev/null
 python scripts/capture_action_chunks.py \
   --checkpoint-dir "$CHECKPOINT" \
   --num-frames "$NUM_FRAMES" \
@@ -43,6 +47,7 @@ python scripts/capture_action_chunks.py \
 
 colab::section "Candidate: PyPI transformers + bidirectional_attention.py"
 python -m pip install -q --force-reinstall --no-deps "transformers==4.40.1"
+python training/openvla_oft_a100/scripts/check_openvla_env.py --expect-pypi-transformers > /dev/null
 python scripts/capture_action_chunks.py \
   --checkpoint-dir "$CHECKPOINT" \
   --num-frames "$NUM_FRAMES" \

@@ -94,6 +94,12 @@ def main() -> None:
     np.save(args.output, stacked)
 
     import transformers
+    from importlib.metadata import distribution
+
+    # Both builds report 4.40.1, so the version alone cannot show that the
+    # reference and candidate runs used different transformers. Without this the
+    # comparison could pass simply because nothing was swapped.
+    from_git_fork = distribution("transformers").read_text("direct_url.json") is not None
 
     print(
         json.dumps(
@@ -102,6 +108,7 @@ def main() -> None:
                 "shape": list(stacked.shape),
                 "attention_patch_applied": not args.no_attention_patch,
                 "transformers": transformers.__version__,
+                "transformers_is_fork": from_git_fork,
                 "seed": args.seed,
                 "finite": bool(np.isfinite(stacked).all()),
                 "abs_max": float(np.abs(stacked).max()),
