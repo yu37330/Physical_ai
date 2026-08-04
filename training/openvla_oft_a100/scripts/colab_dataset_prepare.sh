@@ -17,8 +17,13 @@ colab::require_drive
 
 FULL_SELECTION="${FULL_SELECTION:-$DRIVE_DATASETS/libero_plus_selection_v001.json}"
 if [[ ! -f "$FULL_SELECTION" ]]; then
-  echo "Selection file not found: $FULL_SELECTION" >&2
-  echo "Set FULL_SELECTION to the 800 episode selection JSON on Drive." >&2
+  # Deterministic from the pinned revision and seed, and metadata-only, so
+  # building it is cheaper than making the caller go and find it.
+  echo "Selection not found; building it from metadata: $FULL_SELECTION"
+  bash "$SCRIPT_DIR/colab_build_selection.sh"
+fi
+if [[ ! -f "$FULL_SELECTION" ]]; then
+  echo "Selection file still not found: $FULL_SELECTION" >&2
   exit 1
 fi
 
