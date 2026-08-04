@@ -107,6 +107,67 @@ def test_backoff_grows_and_is_capped() -> None:
     assert hf_download._retry_delay(error, attempt=10) <= hf_download.MAX_RETRY_SECONDS
 
 
+def test_verified_download_repairs_files_the_snapshot_skipped(hub, tmp_path) -> None:
+    """snapshot_download returned normally while leaving files out, and the
+    conversion only found out 28 minutes later on the first missing video."""
+    wanted = ["data/a.parquet", "videos/front/a.mp4", "videos/wrist/a.mp4"]
+
+    def snapshot(**kwargs):
+        # Everything except the wrist video, as the rate-limited run produced.
+        for name in wanted[:-1]:
+            path = tmp_path / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"x")
+        return str(tmp_path)
+
+    fetched: list[str] = []
+
+    def hf_hub_download(**kwargs):
+        name = kwargs["filename"]
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        fetched.append(name)
+        return str(path)
+
+    sys.modules["huggingface_hub"].snapshot_download = snapshot
+    sys.modules["huggingface_hub"].hf_hub_download = hf_hub_download
+
+    result = hf_download.download_files_verified(
+        repo_id="x", repo_type="dataset", revision="rev",
+        local_dir=tmp_path, relative_paths=wanted,
+    )
+
+    assert fetched == ["videos/wrist/a.mp4"]
+    assert result["repaired_files"] == ["videos/wrist/a.mp4"]
+    assert result["verified"] is True
+
+
+def test_verified_download_fails_when_a_file_never_arrives(hub, tmp_path) -> None:
+    wanted = ["data/a.parquet", "videos/wrist/a.mp4"]
+
+    def snapshot(**kwargs):
+        path = tmp_path / wanted[0]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        return str(tmp_path)
+
+    sys.modules["huggingface_hub"].snapshot_download = snapshot
+    sys.modules["huggingface_hub"].hf_hub_download = lambda **kwargs: str(tmp_path)
+
+    with pytest.raises(RuntimeError, match="could not be downloaded"):
+        hf_download.download_files_verified(
+            repo_id="x", repo_type="dataset", revision="rev",
+            local_dir=tmp_path, relative_paths=wanted, repair_attempts=2,
+        )
+
+
+def test_missing_files_lists_only_absent_paths(tmp_path) -> None:
+    (tmp_path / "present.txt").write_bytes(b"x")
+
+    assert hf_download.missing_files(tmp_path, ["present.txt", "absent.txt"]) == ["absent.txt"]
+
+
 @pytest.mark.parametrize(
     "variable", ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"]
 )
