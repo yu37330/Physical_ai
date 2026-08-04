@@ -22,6 +22,49 @@ def _strip_ddp_prefix(state_dict: dict) -> dict:
     return {key[7:] if key.startswith("module.") else key: value for key, value in state_dict.items()}
 
 
+def _register_vendored_prismatic() -> None:
+    """Point transformers' Auto classes at the vendored Prismatic implementation.
+
+    The checkpoint ships configuration/modeling/processing `.py` files and an
+    `auto_map` in config.json, preprocessor_config.json and processor_config.json.
+    Without a local registration for `model_type: "openvla"`, transformers decides
+    it has no local implementation and refuses to load without
+    `trust_remote_code=True`, which the submission runtime must not enable.
+
+    Registering makes the resolution find the pinned vendored classes instead, so
+    the checkpoint's own copies are never executed.
+    """
+    from transformers import (
+        AutoConfig,
+        AutoImageProcessor,
+        AutoModelForVision2Seq,
+        AutoProcessor,
+    )
+
+    from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
+    from prismatic.extern.hf.modeling_prismatic import OpenVLAForActionPrediction
+    from prismatic.extern.hf.processing_prismatic import (
+        PrismaticImageProcessor,
+        PrismaticProcessor,
+    )
+
+    def register(auto_class, *args) -> None:
+        # Registering twice raises; the policy server may build more than one
+        # runtime in a process, and `exist_ok` is not available on every
+        # transformers version.
+        try:
+            auto_class.register(*args)
+        except ValueError:
+            pass
+
+    # AutoConfig first: the other Auto classes resolve the config to find their
+    # own mapping entry.
+    register(AutoConfig, "openvla", OpenVLAConfig)
+    register(AutoImageProcessor, OpenVLAConfig, PrismaticImageProcessor)
+    register(AutoProcessor, OpenVLAConfig, PrismaticProcessor)
+    register(AutoModelForVision2Seq, OpenVLAConfig, OpenVLAForActionPrediction)
+
+
 def _normalize_proprio(proprio: np.ndarray, stats: dict) -> np.ndarray:
     if "q01" in stats and "q99" in stats:
         low = np.asarray(stats["q01"], dtype=np.float32)
@@ -59,6 +102,8 @@ class OpenVLAOfflineRuntime:
             raise RuntimeError("CUDA GPU is required for OpenVLA-OFT+ inference")
         self._torch = torch
         self._device = torch.device("cuda:0")
+
+        _register_vendored_prismatic()
 
         root = str(self.layout.root)
         config = OpenVLAConfig.from_pretrained(root, local_files_only=True)
