@@ -36,6 +36,13 @@ def _episode_paths(root: Path, episode_index: int, front_video_key: str, wrist_v
     }
 
 
+def _parquet_row_count(path: Path) -> int:
+    """Frame count for one episode, read from the parquet footer only."""
+    import pyarrow.parquet as pq
+
+    return int(pq.ParquetFile(path).metadata.num_rows)
+
+
 def _read_vectors(path: Path, state_column: str, action_column: str) -> tuple[np.ndarray, np.ndarray]:
     try:
         import pyarrow.parquet as pq
@@ -246,6 +253,29 @@ def _build_tfds(
     builder = ParcLiberoPlusSelected(data_dir=str(output_root))
     builder.download_and_prepare()
 
+    # download_and_prepare() reuses an already prepared dataset, in which case
+    # _generate_examples never runs and generated_frame_counts stays at zero. That
+    # zero used to reach dataset_manifest.json's frame_count, which the submission
+    # report cites. Count from the source parquet footers instead, which holds
+    # either way, and cross-check when generation did run.
+    source_frame_counts = {
+        split: sum(
+            _parquet_row_count(
+                _episode_paths(source_root, int(row["episode_index"]), front_video_key, wrist_video_key)[
+                    "parquet"
+                ]
+            )
+            for row in rows
+        )
+        for split, rows in episodes_by_split.items()
+    }
+    regenerated = any(generated_frame_counts.values())
+    if regenerated and generated_frame_counts != source_frame_counts:
+        raise ValueError(
+            "Frames written to RLDS do not match the source parquet rows: "
+            f"{generated_frame_counts} != {source_frame_counts}"
+        )
+
     report = {
         "dataset_name": DATASET_NAME,
         "builder_name": builder.name,
@@ -258,9 +288,10 @@ def _build_tfds(
             "validation": len(episodes_by_split["val"]),
         },
         "frame_counts": {
-            "train": generated_frame_counts["train"],
-            "validation": generated_frame_counts["val"],
+            "train": source_frame_counts["train"],
+            "validation": source_frame_counts["val"],
         },
+        "regenerated_this_run": regenerated,
         "tfds_splits": ["train", "val"],
         "contract": {
             "state_dim": STATE_DIM,
