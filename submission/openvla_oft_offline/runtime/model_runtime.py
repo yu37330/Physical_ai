@@ -80,10 +80,18 @@ def _normalize_proprio(proprio: np.ndarray, stats: dict) -> np.ndarray:
 
 
 class OpenVLAOfflineRuntime:
-    def __init__(self, checkpoint_dir: str | Path) -> None:
+    def __init__(self, checkpoint_dir: str | Path, *, apply_attention_patch: bool = True) -> None:
+        """
+        apply_attention_patch: keep True for the submission, where PyPI transformers
+            needs the bidirectional attention change applied. Set False only to
+            capture the OpenVLA-OFT fork's native behaviour as a parity reference;
+            the fork already implements the change, so patching it on top would
+            compare the reimplementation against itself.
+        """
         configure_offline_environment()
         self.layout: CheckpointLayout = inspect_checkpoint(checkpoint_dir)
-        apply_bidirectional_attention_patch()
+        if apply_attention_patch:
+            apply_bidirectional_attention_patch()
         self._load_model()
 
     def _load_model(self) -> None:
