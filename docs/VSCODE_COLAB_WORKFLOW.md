@@ -46,6 +46,8 @@ bash training/openvla_oft_a100/scripts/colab_submission_validate.sh
 
 Terminal中心にすると、`%cd`と`!cd`の状態差、`set -euo pipefail`の効き方、複数行の環境変数といったNotebook特有の問題が構造的に起きません。
 
+ただし**10分を超える処理はTerminalではなくNotebookのCellから実行してください**。Colabのアイドル判定はKernel実行を見ており、Terminalの活動は数えられないため、ランタイムごと回収されます。詳細は「セッションが落ちる場合」を参照。
+
 ### 3. Notebookで結果確認
 
 各NotebookのGate確認Cellで、Manifestとレポートの`status`を確認します。
@@ -83,7 +85,25 @@ REQUIRE_A100=0 bash training/openvla_oft_a100/scripts/colab_preflight.sh
 
 ## セッションが落ちる場合
 
-Colabのセッションは頻繁に落ちます。落ち方によって失うものが違うので、切り分けて対処します。
+### 長い処理はNotebookのCellから実行する（最重要）
+
+**Colabのアイドル判定はNotebookのKernel実行を見ており、Colab Terminalでの作業は活動として数えられません。** Terminalで10分以上かかる処理を回していると、Kernelがアイドルとみなされ、次の通知とともにランタイムごと回収されます。
+
+```text
+Server "Colab GPU L4" has been removed, either outside of the extension or due to inactivity.
+```
+
+そのため、**時間のかかる処理はNotebookのCellから実行します**。Cellが走っている間はKernelがビジーなので回収されません。Notebook 00-06 がラッパーScriptを呼ぶ構成になっているのはこのためでもあります。
+
+Notebookに無い処理も、Cellから同じScriptを呼べば同じ効果が得られます。
+
+```python
+!bash training/openvla_oft_a100/scripts/colab_setup.sh 2>&1 | tee /content/work/setup.log
+```
+
+`tee`しておくと、表示が流れてもログが残ります。
+
+Terminalは短い確認、デバッグ、失敗したStepだけの再実行に向いています。**10分を超える処理をTerminalの前景で回さないでください。**
 
 ### ターミナルだけ切れた（VMは生きている）
 
@@ -131,9 +151,13 @@ nohup bash -c '
 tail -f /content/setup.log
 ```
 
-### アイドルで落とさない
+### サーバー削除後にNotebookが反応しなくなる
 
-実行中のジョブがあればアイドル判定は起きにくいですが、待ち時間が長い場合はターミナルを開いたままにしてください。作業を終えたら`Colab: Remove Server`で明示的に落とすと、コンピューティングユニットの浪費を防げます。
+`Server ... has been removed` の通知が出た後、同じNotebookでCellを実行しても何も起きないことがあります。これはVS Code Jupyter側の既知の不具合（microsoft/vscode-jupyter#17094）で、サーバー削除時にNotebook Controllerが破棄されるためです。**Notebookを開き直す**と復帰します。
+
+### 作業を終えたら明示的に落とす
+
+`Colab: Remove Server`で落とさないと、接続中はアイドルでもコンピューティングユニットを消費し続けます。
 
 ## 環境変数
 
