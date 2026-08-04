@@ -1,5 +1,10 @@
 huggingface_hub>=0.27,<2
 pyarrow>=16,<20
+# torch 2.2.0, which OpenVLA-OFT pins, is built against the NumPy 1.x C API.
+# Colab ships NumPy 2.x, which leaves torch reporting "Failed to initialize
+# NumPy: _ARRAY_API not found" and breaks every tensor/ndarray conversion.
+# Matches the range requirements-frontend.txt already uses.
+numpy>=1.26,<2
 PyYAML>=6,<7
 jsonschema>=4.23,<5
 opencv-python-headless==4.11.0.86

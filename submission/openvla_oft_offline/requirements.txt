@@ -20,7 +20,11 @@ tokenizers==0.19.1
 timm==0.9.10
 peft==0.11.1
 accelerate>=0.25.0,<1.0
-sentencepiece==0.1.99
+# 0.1.99 ships wheels only up to cp311. The scoring image is Python 3.10 so it
+# would install there, but it cannot build on the 3.12 Colab runtime used to
+# measure this package. 0.2.0 has wheels for both, and matches what
+# patch_openvla_oft_dependencies.py selects for training.
+sentencepiece==0.2.0
 safetensors>=0.4.3
 einops>=0.7,<1.0
 Pillow>=10,<12
