@@ -113,6 +113,28 @@ colab::tree_bytes() {
     | awk '{ total += $1 } END { printf "%.0f\n", total }'
 }
 
+# Bring a Stage A run back from Drive after /content has been recycled. Every
+# run persists there, so a fresh runtime should not be told to redo training
+# whose result is already sitting on Drive. Returns non-zero when neither copy
+# has a checkpoint, which is the caller's cue that the stage really has not run.
+colab::restore_run() {
+  local name="$1"
+  local local_dir="$RUN_ROOT/$name"
+  local drive_dir="$DRIVE_EXPERIMENTS/$name"
+
+  if compgen -G "$local_dir/*/action_head--*checkpoint.pt" > /dev/null; then
+    return 0
+  fi
+  if ! compgen -G "$drive_dir/*/action_head--*checkpoint.pt" > /dev/null; then
+    return 1
+  fi
+
+  colab::section "Restoring $name from Drive"
+  mkdir -p "$RUN_ROOT"
+  cp -R "$drive_dir" "$local_dir"
+  echo "Restored: $local_dir"
+}
+
 colab::free_bytes() {
   df -B1 --output=avail "$1" 2>/dev/null | tail -1 | tr -d ' '
 }

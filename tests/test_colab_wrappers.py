@@ -283,3 +283,57 @@ def test_tree_bytes_does_not_use_scientific_notation(
 
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == "12892612026"
+
+
+def _restore_run(name: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    script = (
+        f'source "{SCRIPTS / "colab_env.sh"}"\n'
+        f'colab::restore_run "{name}"\n'
+    )
+    return _bash(["-c", script], env)
+
+
+def test_restore_run_brings_a_persisted_run_back_from_drive(
+    colab_env: dict[str, str],
+) -> None:
+    """/content is recycled with the VM but every run persists to Drive. Without
+    this, a fresh runtime is told to redo training that has already been done."""
+    drive_run = Path(colab_env["DRIVE_ROOT"]) / "40_experiments/stage_a_s1_head_proprio_100/step"
+    drive_run.mkdir(parents=True)
+    (drive_run / "action_head--latest_checkpoint.pt").write_bytes(b"trained")
+
+    completed = _restore_run("stage_a_s1_head_proprio_100", colab_env)
+
+    assert completed.returncode == 0, completed.stderr
+    restored = (
+        Path(colab_env["WORK_ROOT"])
+        / "runs/stage_a_s1_head_proprio_100/step/action_head--latest_checkpoint.pt"
+    )
+    assert restored.read_bytes() == b"trained"
+
+
+def test_restore_run_reports_when_neither_copy_has_a_checkpoint(
+    colab_env: dict[str, str],
+) -> None:
+    """A run directory on Drive without a checkpoint means the stage failed, not
+    that it can be restored; the caller has to hear the difference."""
+    empty = Path(colab_env["DRIVE_ROOT"]) / "40_experiments/stage_a_s1_head_proprio_100"
+    empty.mkdir(parents=True)
+
+    completed = _restore_run("stage_a_s1_head_proprio_100", colab_env)
+
+    assert completed.returncode == 1
+
+
+def test_restore_run_leaves_a_local_run_alone(colab_env: dict[str, str]) -> None:
+    local_run = Path(colab_env["WORK_ROOT"]) / "runs/stage_a_s1_head_proprio_100/step"
+    local_run.mkdir(parents=True)
+    (local_run / "action_head--latest_checkpoint.pt").write_bytes(b"local")
+    drive_run = Path(colab_env["DRIVE_ROOT"]) / "40_experiments/stage_a_s1_head_proprio_100/step"
+    drive_run.mkdir(parents=True)
+    (drive_run / "action_head--latest_checkpoint.pt").write_bytes(b"stale")
+
+    completed = _restore_run("stage_a_s1_head_proprio_100", colab_env)
+
+    assert completed.returncode == 0, completed.stderr
+    assert (local_run / "action_head--latest_checkpoint.pt").read_bytes() == b"local"

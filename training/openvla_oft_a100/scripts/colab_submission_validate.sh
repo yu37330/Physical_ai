@@ -33,9 +33,18 @@ echo "Official commit: $OFFICIAL_COMMIT"
 # Base weights alone would be "公開重みを実質的に変更せず推論する", which the rules
 # disallow; the trained action head and proprio projector are what make the
 # submission independently trained.
-STAGE_A_RUN="${STAGE_A_RUN:-$RUN_ROOT/stage_a_s2_head_proprio_500}"
-if [[ ! -d "$STAGE_A_RUN" ]]; then
-  STAGE_A_RUN="$RUN_ROOT/stage_a_s1_head_proprio_100"
+#
+# S2 if it exists, S1 otherwise, restoring from Drive when /content has been
+# recycled. Without the restore this stage tells a fresh runtime to run training
+# that has already been done and persisted.
+if [[ -z "${STAGE_A_RUN:-}" ]]; then
+  for candidate in stage_a_s2_head_proprio_500 stage_a_s1_head_proprio_100; do
+    if colab::restore_run "$candidate"; then
+      STAGE_A_RUN="$RUN_ROOT/$candidate"
+      break
+    fi
+  done
+  STAGE_A_RUN="${STAGE_A_RUN:-$RUN_ROOT/stage_a_s1_head_proprio_100}"
 fi
 
 if [[ "${ASSEMBLE_CHECKPOINT:-1}" == "1" ]]; then
