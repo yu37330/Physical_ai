@@ -53,6 +53,40 @@
 
 Stage A学習で増えるのは Action Head と Proprio Projector のみのため、これらの数値は学習後も大きくは変わらない見込み。
 
+## Stage A S1 学習後の提出物（2026-08-05）
+
+Base重みにStage A S1（100 step）で学習したAction HeadとProprio Projectorを合成し、運営Validatorの静的・動的検査を通過した。
+
+| 項目 | 値 |
+|---|---|
+| 学習 | Stage A S1、100 step、3.99秒/step、6分36秒 |
+| 学習GPU | **NVIDIA L4 22.5GB**（A100不要と判明） |
+| 学習対象 | Action Head、Proprio Projector（Base VLAはfreeze） |
+| Dataset | `parc_libero_plus_selected` 800 Episode（train 640 / val 160） |
+| 学習済みcomponent | 355MB |
+
+### 運営Validator
+
+| Gate | 実測 | 上限 | 判定 |
+|---|---:|---:|---|
+| 静的検査（ZIP） | エラー0、警告0 | — | ok |
+| `/act` 最大 | **1.775 秒** | 10 秒 | pass |
+| `/act` 平均 | 0.593 秒 | — | |
+| Action | `(7,) float32` 有限値 | — | pass |
+| 同一seed再現性 | 一致 | — | pass |
+| ZIP | **14.39 GiB** | 20 GB | pass |
+| 展開後 | 14.39 GiB | 40 GB | pass |
+
+ZIP SHA256: `68a44adf0432298d33c5576578e586843e55a2bf1bdad3f090df42d5183692f8`
+
+`/act`のLatencyが合成観測での計測（0.234秒）より大きいのは、運営Validatorがwarm-upを含めて計測するため。いずれも10秒制限に対して十分な余裕がある。
+
+### 組み立ての要点
+
+- Base同梱の`action_head--150000`と`proprio_projector--150000`は**削除**する。`inspect_checkpoint`がちょうど1つを要求し、残せば「公開重みを実質的に変更せず推論する」構成にもなる
+- `dataset_statistics.json`は**学習runのもの**を使う。Action Headは学習したデータセットの正規化に対して出力するため、Baseの統計で逆正規化すると全Actionがずれる
+- 学習状態とLoRA adapterは除外する
+
 ## 未検証の残件
 
 ### 1. Action値の一致（最重要）
