@@ -119,6 +119,8 @@ def main() -> None:
     ]
     if not args.no_require_drive:
         required_check_names[3:3] = ["drive_mounted", "drive_disk_free"]
+    if args.require_training_gpu:
+        required_check_names.append("training_gpu")
     if args.require_a100_40gb:
         required_check_names.append("a100_40gb")
     status = "pass" if all(checks[name] for name in required_check_names) else "fail"
