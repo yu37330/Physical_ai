@@ -74,9 +74,14 @@ python "$OFFICIAL_REPO_ROOT/validate_submission.py" "$ZIP_PATH" \
   --static --pip-dry-run --json
 
 if [[ "${RUN_DYNAMIC_SMOKE:-0}" == "1" ]]; then
-  colab::section "Dynamic smoke (/health, /reset, /act)"
-  python "$OFFICIAL_REPO_ROOT/validate_submission.py" "$ZIP_PATH" \
-    --camera 128 --health-timeout 120 --json
+  # Against the directory, not the ZIP: validating the archive extracts it first,
+  # which needs another ~14GB on a disk that already holds both the checkpoint and
+  # the archive. The contents are identical and the archive's own integrity was
+  # just checked statically. SMOKE_TARGET forces the ZIP where space allows.
+  SMOKE_TARGET="${SMOKE_TARGET:-$SUBMISSION_DIR}"
+  colab::section "Dynamic smoke (/health, /reset, /act) against $(basename "$SMOKE_TARGET")"
+  python "$OFFICIAL_REPO_ROOT/validate_submission.py" "$SMOKE_TARGET" \
+    --camera 128 --health-timeout "${SMOKE_HEALTH_TIMEOUT:-180}" --json
 else
   echo
   echo "Skipped the dynamic smoke. Re-run with RUN_DYNAMIC_SMOKE=1 once static passes."
