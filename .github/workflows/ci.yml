@@ -80,6 +80,7 @@ jobs:
             tests/test_offline_runtime_registration.py \
             tests/test_action_parity_tools.py \
             tests/test_assemble_submission_checkpoint.py \
+            tests/test_transfer_large_file.py \
             tests/test_openvla_env_check.py \
             tests/test_data_modules_importable.py \
             tests/test_hf_download_retry.py \
