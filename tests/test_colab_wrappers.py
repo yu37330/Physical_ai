@@ -17,6 +17,8 @@ WRAPPERS = [
     "colab_stage_a.sh",
     "colab_submission_validate.sh",
     "colab_smoke.sh",
+    "colab_run_detached.sh",
+    "colab_transfer_submission.sh",
 ]
 
 def _find_bash() -> str | None:
@@ -193,3 +195,21 @@ def test_notebooks_delegate_to_the_same_wrappers() -> None:
         )
         assert wrapper in sources, f"{notebook} no longer calls {wrapper}"
         assert (SCRIPTS / wrapper).is_file()
+
+
+def test_detached_runner_rejects_a_missing_wrapper(colab_env: dict[str, str]) -> None:
+    """The point is to walk away from the run, so a typo has to fail now rather
+    than detach into a log nobody is watching."""
+    completed = _run("colab_run_detached.sh", ["DATASET_PROFILE=full", "nope.sh"], colab_env)
+
+    assert completed.returncode == 1
+    assert "Wrapper not found" in completed.stderr
+
+
+def test_detached_runner_requires_a_wrapper_after_the_assignments(
+    colab_env: dict[str, str],
+) -> None:
+    completed = _run("colab_run_detached.sh", ["DATASET_PROFILE=full"], colab_env)
+
+    assert completed.returncode == 2
+    assert "No wrapper given" in completed.stderr
