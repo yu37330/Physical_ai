@@ -259,3 +259,27 @@ def test_tree_bytes_ignores_directory_inodes(tmp_path: Path, colab_env: dict[str
 
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == "1024"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="needs sparse files to size a tree past 2^31")
+def test_tree_bytes_does_not_use_scientific_notation(
+    tmp_path: Path, colab_env: dict[str, str]
+) -> None:
+    """Colab runs mawk, which formats with OFMT %.6g and renders a 13GB total as
+    1.28926e+10. Shell arithmetic cannot read that back, and the restore
+    condition then reads false, which means 'convert from scratch'."""
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    big = tree / "shard.tfrecord"
+    with big.open("wb") as handle:
+        handle.truncate(12_892_612_026)
+
+    script = (
+        f'source "{SCRIPTS / "colab_env.sh"}"\n'
+        f'total=$(colab::tree_bytes "{tree.as_posix()}")\n'
+        f'(( total > 0 )) && echo "$total"\n'
+    )
+    completed = _bash(["-c", script], colab_env)
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "12892612026"

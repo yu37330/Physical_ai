@@ -35,6 +35,17 @@ if [[ -d "$DRIVE_RLDS" ]]; then
   [[ -d "$RLDS_ROOT" ]] && work_rlds_bytes=$(colab::tree_bytes "$RLDS_ROOT")
 fi
 
+# A non-numeric size makes the restore condition false, and false here means
+# "convert from scratch": an hour of work and 2,400 downloads, silently, because
+# a size could not be measured. Refuse instead.
+for measured in "$drive_rlds_bytes" "$work_rlds_bytes"; do
+  if [[ ! "$measured" =~ ^[0-9]+$ ]]; then
+    echo "Could not measure the RLDS size (got '$measured')." >&2
+    echo "Refusing to fall through to a full reconversion." >&2
+    exit 1
+  fi
+done
+
 if [[ "${PERSIST_RLDS:-1}" == "1" ]] \
   && (( drive_rlds_bytes > 0 )) \
   && [[ -f "$DRIVE_RLDS/$DATASET_NAME/$DATASET_VERSION/dataset_info.json" ]] \

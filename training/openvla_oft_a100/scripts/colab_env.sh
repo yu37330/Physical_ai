@@ -105,8 +105,12 @@ colab::persist() {
 # themselves. `du -sb` includes directory inodes, which ext4 reports as 4096 and
 # the Drive FUSE mount reports as 0, so comparing two identical trees across the
 # two filesystems differs by 4096 per directory and a good copy looks short.
+# printf "%.0f", not print: Colab's awk is mawk, which formats with OFMT %.6g and
+# renders a 13GB total as 1.28926e+10. Shell arithmetic cannot read that back, so
+# the comparison fails with a syntax error instead of a number.
 colab::tree_bytes() {
-  find "$1" -type f -printf '%s\n' 2>/dev/null | awk '{ total += $1 } END { print total + 0 }'
+  find "$1" -type f -printf '%s\n' 2>/dev/null \
+    | awk '{ total += $1 } END { printf "%.0f\n", total }'
 }
 
 colab::free_bytes() {
