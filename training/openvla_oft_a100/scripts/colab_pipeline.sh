@@ -14,6 +14,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Before colab_env.sh, which defaults it to the 3-episode mini profile. Setting
+# it afterwards looks identical and does nothing: the variable is already bound,
+# so `${DATASET_PROFILE:-full}` keeps mini and the whole pipeline quietly trains
+# on three episodes.
+export DATASET_PROFILE="${DATASET_PROFILE:-full}"
+
 # shellcheck source=colab_env.sh
 source "$SCRIPT_DIR/colab_env.sh"
 colab::notify_on_exit "Full pipeline"
@@ -23,7 +30,6 @@ colab::require_drive
 
 STAGES="${STAGES:-setup prepare stage_a submit}"
 STAGE_A_STAGE="${STAGE_A_STAGE:-s2}"
-export DATASET_PROFILE="${DATASET_PROFILE:-full}"
 
 # Up front: the run is unattended for close to two hours, and a name typed wrong
 # would otherwise surface after setup has already spent twenty minutes.

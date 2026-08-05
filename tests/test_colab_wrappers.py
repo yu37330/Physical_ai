@@ -223,3 +223,20 @@ def test_pipeline_rejects_an_unknown_stage(colab_env: dict[str, str]) -> None:
 
     assert completed.returncode == 2
     assert "Unknown stage: bogus" in completed.stderr
+
+
+def test_pipeline_defaults_to_the_full_dataset_profile(colab_env: dict[str, str]) -> None:
+    """colab_env.sh binds DATASET_PROFILE to mini, so a default set after
+    sourcing it looks right and does nothing -- the pipeline would train on
+    three episodes without saying so."""
+    completed = _run("colab_pipeline.sh", [], {**colab_env, "STAGES": "setup"})
+
+    assert "Profile: full" in completed.stdout
+
+
+def test_pipeline_honours_an_explicit_profile(colab_env: dict[str, str]) -> None:
+    completed = _run(
+        "colab_pipeline.sh", [], {**colab_env, "STAGES": "setup", "DATASET_PROFILE": "mini"}
+    )
+
+    assert "Profile: mini" in completed.stdout
