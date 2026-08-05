@@ -113,9 +113,42 @@ if colab::require_drive; then
   } > "$SUBMISSION_BUILD_ROOT/submission_sha256.txt"
   colab::persist "$SUBMISSION_BUILD_ROOT/submission_sha256.txt" \
     "$DRIVE_SUBMISSIONS/submission_sha256.txt"
+
+  # The archive is far past colab::persist's small-artifact limit, and on a 15GB
+  # Drive it did not fit at all. With room it belongs there: /content dies with
+  # the VM, and the Jupyter contents API that VS Code downloads through cannot
+  # serve a file this size, so Drive is also the only practical way out.
+  if [[ "${PERSIST_ZIP:-1}" == "1" ]]; then
+    zip_bytes=$(stat -c %s "$ZIP_PATH")
+    drive_free=$(colab::free_bytes "$DRIVE_ROOT")
+    drive_copy="$DRIVE_SUBMISSIONS/$(basename "$ZIP_PATH")"
+    existing_bytes=0
+    [[ -f "$drive_copy" ]] && existing_bytes=$(stat -c %s "$drive_copy")
+
+    if (( existing_bytes == zip_bytes )); then
+      colab::section "Archive already on Drive"
+      echo "$drive_copy"
+    elif (( zip_bytes + 1073741824 > drive_free + existing_bytes )); then
+      colab::section "Not copying the archive to Drive"
+      echo "Needs $((zip_bytes / 1024**3))GB plus margin, $((drive_free / 1024**3))GB free."
+      echo "Set PERSIST_ZIP=0 to silence this."
+    else
+      colab::section "Copying the archive to Drive"
+      cp "$ZIP_PATH" "$drive_copy"
+      # A FUSE write that runs short leaves a plausible-looking file, and the
+      # next thing that touches it is a 14GB download over a home connection.
+      copied_bytes=$(stat -c %s "$drive_copy")
+      if (( copied_bytes != zip_bytes )); then
+        rm -f "$drive_copy"
+        echo "Copy to Drive was short ($copied_bytes of $zip_bytes bytes); removed it." >&2
+        exit 1
+      fi
+      echo "$drive_copy"
+    fi
+  fi
 fi
 
 colab::report_disk
 colab::section "Submission build complete"
 echo "ZIP: $ZIP_PATH"
-echo "Download it to the local machine; it is too large for Drive and /content is ephemeral."
+echo "Download it from Drive, then check it against $DRIVE_SUBMISSIONS/submission_sha256.txt."
