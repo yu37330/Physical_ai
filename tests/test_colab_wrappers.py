@@ -17,6 +17,7 @@ WRAPPERS = [
     "colab_stage_a.sh",
     "colab_submission_validate.sh",
     "colab_smoke.sh",
+    "colab_pipeline.sh",
     "colab_run_detached.sh",
     "colab_transfer_submission.sh",
 ]
@@ -213,3 +214,12 @@ def test_detached_runner_requires_a_wrapper_after_the_assignments(
 
     assert completed.returncode == 2
     assert "No wrapper given" in completed.stderr
+
+
+def test_pipeline_rejects_an_unknown_stage(colab_env: dict[str, str]) -> None:
+    """It runs unattended for close to two hours, so a typo has to fail at the
+    top rather than after setup has already spent twenty minutes."""
+    completed = _run("colab_pipeline.sh", [], {**colab_env, "STAGES": "setup bogus"})
+
+    assert completed.returncode == 2
+    assert "Unknown stage: bogus" in completed.stderr
