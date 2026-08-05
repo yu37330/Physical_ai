@@ -105,15 +105,7 @@ fi
 
 colab::section "Persist build record to Drive"
 if colab::require_drive; then
-  colab::persist "$ZIP_PATH.json" \
-    "$DRIVE_SUBMISSIONS/parc2026_track1_openvla_oft_plus.zip.json"
-  {
-    echo "official_commit: $OFFICIAL_COMMIT"
-    echo "built_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    sha256sum "$ZIP_PATH"
-  } > "$SUBMISSION_BUILD_ROOT/submission_sha256.txt"
-  colab::persist "$SUBMISSION_BUILD_ROOT/submission_sha256.txt" \
-    "$DRIVE_SUBMISSIONS/submission_sha256.txt"
+  drive_record="$DRIVE_SUBMISSIONS/parc2026_track1_openvla_oft_plus.zip.json"
 
   # The archive is far past colab::persist's small-artifact limit, and on a 15GB
   # Drive it did not fit at all. With room it belongs there: /content dies with
@@ -121,12 +113,23 @@ if colab::require_drive; then
   # serve a file this size, so Drive is also the only practical way out.
   if [[ "${PERSIST_ZIP:-1}" == "1" ]]; then
     zip_bytes=$(stat -c %s "$ZIP_PATH")
+    zip_sha=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$ZIP_PATH.json")
     drive_free=$(colab::free_bytes "$DRIVE_ROOT")
     drive_copy="$DRIVE_SUBMISSIONS/$(basename "$ZIP_PATH")"
     existing_bytes=0
-    [[ -f "$drive_copy" ]] && existing_bytes=$(stat -c %s "$drive_copy")
+    existing_sha=""
+    if [[ -f "$drive_copy" ]]; then
+      existing_bytes=$(stat -c %s "$drive_copy")
+      [[ -f "$drive_record" ]] && existing_sha=$(python -c \
+        'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$drive_record")
+    fi
 
-    if (( existing_bytes == zip_bytes )); then
+    # By hash, not by size. An S2 archive holds the same files as an S1 one, and
+    # the action head and proprio projector have identical sizes at every step
+    # count, so the two archives can match to the byte in length while being
+    # different models. Skipping on size would hand over yesterday's weights.
+    if [[ -n "$existing_sha" && "$existing_sha" == "$zip_sha" ]] \
+      && (( existing_bytes == zip_bytes )); then
       colab::section "Archive already on Drive"
       echo "$drive_copy"
     elif (( zip_bytes + 1073741824 > drive_free + existing_bytes )); then
@@ -147,6 +150,18 @@ if colab::require_drive; then
       echo "$drive_copy"
     fi
   fi
+
+  # After the archive, not before: the record is what the next run compares
+  # against, so writing it first would let a failed copy claim the new hash and
+  # make the stale archive look current forever.
+  colab::persist "$ZIP_PATH.json" "$drive_record"
+  {
+    echo "official_commit: $OFFICIAL_COMMIT"
+    echo "built_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    sha256sum "$ZIP_PATH"
+  } > "$SUBMISSION_BUILD_ROOT/submission_sha256.txt"
+  colab::persist "$SUBMISSION_BUILD_ROOT/submission_sha256.txt" \
+    "$DRIVE_SUBMISSIONS/submission_sha256.txt"
 fi
 
 colab::report_disk
