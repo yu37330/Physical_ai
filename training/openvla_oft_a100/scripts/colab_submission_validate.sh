@@ -28,10 +28,33 @@ bash scripts/fetch_official_repo.sh "$OFFICIAL_REPO_ROOT"
 OFFICIAL_COMMIT="$(git -C "$OFFICIAL_REPO_ROOT" rev-parse HEAD)"
 echo "Official commit: $OFFICIAL_COMMIT"
 
+# Assemble from the Stage A run rather than expecting a hand-placed checkpoint.
+# Base weights alone would be "公開重みを実質的に変更せず推論する", which the rules
+# disallow; the trained action head and proprio projector are what make the
+# submission independently trained.
+STAGE_A_RUN="${STAGE_A_RUN:-$RUN_ROOT/stage_a_s2_head_proprio_500}"
+if [[ ! -d "$STAGE_A_RUN" ]]; then
+  STAGE_A_RUN="$RUN_ROOT/stage_a_s1_head_proprio_100"
+fi
+
+if [[ "${ASSEMBLE_CHECKPOINT:-1}" == "1" ]]; then
+  if [[ ! -d "$STAGE_A_RUN" ]]; then
+    echo "No Stage A run found under $RUN_ROOT." >&2
+    echo "Run colab_stage_a.sh s1 first, or set STAGE_A_RUN." >&2
+    exit 1
+  fi
+  colab::section "Assembling the submission checkpoint from $(basename "$STAGE_A_RUN")"
+  python scripts/assemble_submission_checkpoint.py \
+    --base-checkpoint "$BASE_CHECKPOINT" \
+    --trained-run-dir "$STAGE_A_RUN" \
+    --output "$MODEL_TARGET" \
+    --report "$SUBMISSION_BUILD_ROOT/assembled_checkpoint.json"
+fi
+
 if [[ ! -d "$MODEL_TARGET" ]] || [[ -z "$(ls -A "$MODEL_TARGET" 2>/dev/null)" ]]; then
   mkdir -p "$MODEL_TARGET"
   echo "Place the frozen final checkpoint at: $MODEL_TARGET" >&2
-  echo "Then re-run this script." >&2
+  echo "Then re-run this script, or use ASSEMBLE_CHECKPOINT=1." >&2
   exit 1
 fi
 
