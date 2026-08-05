@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 MARKER = "PARC_COMPONENT_CHECKPOINT_PATCH"
+DEVICE_MARKER = "PARC_BATCH_DEVICE_PATCH"
 
 
 def _replace_once(source: str, old: str, new: str, label: str) -> str:
@@ -73,12 +74,58 @@ def patch(path: Path) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+def patch_batch_device(path: Path) -> int:
+    """Move `labels` and `proprio` onto the training device.
+
+    Upstream moves input_ids, attention_mask and pixel_values but passes labels
+    and proprio straight from the batch, so both stay on CPU. The action masks
+    are derived from labels inside the model, which then fails with
+
+        RuntimeError: Expected all tensors to be on the same device,
+        but found at least two devices, cuda:0 and cpu!
+
+    at `input_embeddings * ~all_actions_mask`. Two call sites do this, and the
+    same file already moves labels for logging a few lines below, so the omission
+    looks accidental.
+
+    Guarded separately from MARKER: an environment patched before this fix
+    existed still needs it.
+    """
+    source = path.read_text(encoding="utf-8")
+    if DEVICE_MARKER in source:
+        return 0
+
+    old = (
+        '            labels=batch["labels"],\n'
+        "            output_hidden_states=True,\n"
+        '            proprio=batch["proprio"] if use_proprio else None,\n'
+    )
+    new = (
+        '            labels=batch["labels"].to(device_id),  # PARC_BATCH_DEVICE_PATCH\n'
+        "            output_hidden_states=True,\n"
+        '            proprio=batch["proprio"].to(device_id) if use_proprio else None,\n'
+    )
+    # The second site is indented one level further, inside the diffusion loop.
+    old_nested = old.replace("            ", "                ")
+    new_nested = new.replace("            ", "                ")
+
+    applied = source.count(old) + source.count(old_nested)
+    if applied == 0:
+        raise RuntimeError(
+            "Could not locate the VLA forward batch arguments; pinned OpenVLA-OFT source changed"
+        )
+    source = source.replace(old, new).replace(old_nested, new_nested)
+    path.write_text(source, encoding="utf-8")
+    return applied
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("finetune_py", type=Path)
     args = parser.parse_args()
     patch(args.finetune_py)
-    print(f"Patched: {args.finetune_py}")
+    moved = patch_batch_device(args.finetune_py)
+    print(f"Patched: {args.finetune_py} (batch device call sites: {moved})")
 
 
 if __name__ == "__main__":
