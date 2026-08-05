@@ -40,7 +40,11 @@ preflight_args=(
   --project-root "$PROJECT_ROOT"
   --work-root "$WORK_ROOT"
   --drive-root "$DRIVE_ROOT"
-  --minimum-drive-free-gb "${MINIMUM_DRIVE_FREE_GB:-2}"
+  # 1GB, not 2: the converted RLDS is meant to live on Drive and takes about
+  # 13GB of the 15GB there, so a 2GB floor rejects the very layout this pipeline
+  # creates. What still has to fit is the Stage A components at roughly 370MB
+  # per stage, plus manifests.
+  --minimum-drive-free-gb "${MINIMUM_DRIVE_FREE_GB:-1}"
   --minimum-work-free-gb "${MINIMUM_WORK_FREE_GB:-80}"
   --output "$PREFLIGHT_REPORT"
 )
