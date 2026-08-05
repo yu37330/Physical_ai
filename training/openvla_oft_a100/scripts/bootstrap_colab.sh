@@ -15,7 +15,8 @@ STAMP="$WORKDIR/.parc_bootstrap_complete"
 if [[ "${FORCE_BOOTSTRAP:-0}" != "1" ]] \
   && [[ -f "$STAMP" ]] \
   && [[ "$(cat "$STAMP")" == "$OPENVLA_OFT_COMMIT" ]] \
-  && python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/check_openvla_env.py" > /dev/null 2>&1
+  && python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/check_openvla_env.py" \
+       --require-parc-dataset > /dev/null 2>&1
 then
   echo "OpenVLA-OFT environment already complete at $OPENVLA_OFT_COMMIT; skipping."
   echo "Set FORCE_BOOTSTRAP=1 to rebuild it."
@@ -63,6 +64,13 @@ python -c "import dlimp"
 if [[ "${INSTALL_FLASH_ATTN:-0}" == "1" ]]; then
   python -m pip install "flash-attn==2.5.5" --no-build-isolation
 fi
+
+# Registering the PARC dataset belongs to the OpenVLA-OFT checkout, which is
+# rebuilt with every VM, not to dataset conversion. prepare_stage_a_rlds.sh used
+# to be the only caller, so restoring an already converted dataset from Drive
+# skipped it and training failed with KeyError: 'parc_stage_a_plus_only'.
+python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/patch_parc_dataset_registry.py" \
+  --openvla-root "$WORKDIR"
 
 python "$PROJECT_ROOT/training/openvla_oft_a100/scripts/patch_finetune_component_init.py" \
   "$WORKDIR/vla-scripts/finetune.py"

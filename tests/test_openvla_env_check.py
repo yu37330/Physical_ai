@@ -19,9 +19,30 @@ def _report(**overrides):
         "imports": dict(OK_IMPORTS),
         "versions": {"torch": "2.2.0", "transformers": "4.40.1", "numpy": "1.26.4"},
         "transformers_is_fork": True,
+        "parc_dataset_registered": True,
     }
     report.update(overrides)
     return report
+
+
+def test_an_unregistered_parc_dataset_blocks_training() -> None:
+    """patch_parc_dataset_registry.py edits the OpenVLA-OFT checkout, which is
+    rebuilt with every VM. Restoring a converted dataset from Drive used to skip
+    it, and training died on KeyError: 'parc_stage_a_plus_only'."""
+    problems = evaluate(
+        _report(parc_dataset_registered=False),
+        expect_pypi_transformers=False,
+        require_parc_dataset=True,
+    )
+
+    assert any("parc_stage_a_plus_only" in problem for problem in problems)
+
+
+def test_the_registry_is_not_required_unless_asked() -> None:
+    """The submission measurement does not train, so it has no use for it."""
+    assert evaluate(
+        _report(parc_dataset_registered=False), expect_pypi_transformers=False
+    ) == []
 
 
 def test_a_complete_training_environment_has_no_problems() -> None:

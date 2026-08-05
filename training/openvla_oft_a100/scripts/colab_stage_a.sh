@@ -60,7 +60,7 @@ fi
 # would silently use causal attention while the submission runtime applies the
 # bidirectional patch, so the model would be trained under different semantics
 # than it is evaluated with. Nothing would error; only the score would suffer.
-if ! python training/openvla_oft_a100/scripts/check_openvla_env.py; then
+if ! python training/openvla_oft_a100/scripts/check_openvla_env.py --require-parc-dataset; then
   echo >&2
   echo "The OpenVLA-OFT environment is not ready for training." >&2
   echo "Run colab_setup.sh to restore it, then re-run this script." >&2

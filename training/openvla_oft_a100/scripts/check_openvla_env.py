@@ -63,10 +63,30 @@ def inspect() -> dict[str, Any]:
             report["versions"][package] = None
 
     report["transformers_is_fork"] = _transformers_is_fork()
+
+    # patch_parc_dataset_registry.py edits the OpenVLA-OFT checkout, which is
+    # rebuilt with every VM. Without it training dies on
+    # KeyError: 'parc_stage_a_plus_only', and the bootstrap skip would otherwise
+    # keep an environment that only looks complete.
+    try:
+        from prismatic.vla.datasets.rlds.oxe.configs import OXE_DATASET_CONFIGS
+        from prismatic.vla.datasets.rlds.oxe.mixtures import OXE_NAMED_MIXTURES
+
+        report["parc_dataset_registered"] = (
+            "parc_stage_a_plus_only" in OXE_NAMED_MIXTURES
+            and "parc_libero_plus_selected" in OXE_DATASET_CONFIGS
+        )
+    except Exception as error:  # noqa: BLE001 - any failure means not registered
+        report["parc_dataset_registered"] = False
+        report["parc_dataset_error"] = f"{type(error).__name__}: {error}"
     return report
 
 
-def evaluate(report: dict[str, Any], expect_pypi_transformers: bool) -> list[str]:
+def evaluate(
+    report: dict[str, Any],
+    expect_pypi_transformers: bool,
+    require_parc_dataset: bool = False,
+) -> list[str]:
     problems = [
         f"{name}: {status}"
         for name, status in report["imports"].items()
@@ -87,6 +107,12 @@ def evaluate(report: dict[str, Any], expect_pypi_transformers: bool) -> list[str
         # colab_action_parity.sh swaps the fork out; training needs it back.
         problems.append("transformers is the PyPI build; training needs the OpenVLA-OFT fork")
 
+    if require_parc_dataset and not report.get("parc_dataset_registered"):
+        problems.append(
+            "the PARC dataset is not registered in the OpenVLA-OFT checkout; "
+            "training would fail with KeyError: 'parc_stage_a_plus_only'"
+        )
+
     return problems
 
 
@@ -97,10 +123,17 @@ def main() -> None:
         action="store_true",
         help="Require the PyPI build instead of the OpenVLA-OFT fork.",
     )
+    parser.add_argument(
+        "--require-parc-dataset",
+        action="store_true",
+        help="Also require the PARC dataset and mixture to be registered.",
+    )
     args = parser.parse_args()
 
     report = inspect()
-    problems = evaluate(report, args.expect_pypi_transformers)
+    problems = evaluate(
+        report, args.expect_pypi_transformers, args.require_parc_dataset
+    )
     report["problems"] = problems
     report["status"] = "ok" if not problems else "rebuild_required"
     print(json.dumps(report, ensure_ascii=False, indent=2))
