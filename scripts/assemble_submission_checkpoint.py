@@ -42,13 +42,19 @@ def sha256(path: Path) -> str:
 
 
 def _latest(paths: list[Path]) -> Path:
-    """Highest training step, so a run that kept several checkpoints is unambiguous."""
+    """Highest training step, so a run that kept several checkpoints is unambiguous.
 
-    def step(path: Path) -> int:
+    finetune.py also writes an unnumbered ``--latest`` copy, which is all that
+    survives in some run directories. It has no step to compare, so it ranks
+    below any numbered checkpoint and falls back to modification time against
+    other unnumbered ones.
+    """
+
+    def rank(path: Path) -> tuple[int, float]:
         match = STEP_PATTERN.search(path.name)
-        return int(match.group(1)) if match else -1
+        return (int(match.group(1)) if match else -1, path.stat().st_mtime)
 
-    return max(paths, key=step)
+    return max(paths, key=rank)
 
 
 def find_trained_component(run_dir: Path, pattern: str) -> Path:

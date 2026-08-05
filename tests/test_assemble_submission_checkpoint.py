@@ -130,6 +130,28 @@ def test_the_latest_checkpoint_wins_when_several_were_kept(
     assert (output / "action_head--500_checkpoint.pt").read_bytes() == b"later head"
 
 
+def test_an_unnumbered_latest_checkpoint_is_usable(
+    base_checkpoint: Path, tmp_path: Path
+) -> None:
+    """finetune.py writes an unnumbered '--latest' copy, and that is all that
+    survives in the run directory persisted to Drive. Restoring from Drive after
+    the runtime goes has to assemble from it."""
+    run = tmp_path / "restored" / "openvla+mix+b8"
+    run.mkdir(parents=True)
+    (run / "action_head--latest_checkpoint.pt").write_bytes(b"trained head")
+    (run / "proprio_projector--latest_checkpoint.pt").write_bytes(b"trained proprio")
+    (run / "dataset_statistics.json").write_text(
+        '{"parc_libero_plus_selected": {}}', encoding="utf-8"
+    )
+
+    output = tmp_path / "out"
+    report = _assemble(base_checkpoint, tmp_path / "restored", output)
+
+    assert report["layout"]["action_head"] == "action_head--latest_checkpoint.pt"
+    assert (output / "action_head--latest_checkpoint.pt").read_bytes() == b"trained head"
+    assert not (output / "action_head--150000_checkpoint.pt").exists()
+
+
 def test_a_run_without_a_checkpoint_is_rejected(
     base_checkpoint: Path, tmp_path: Path
 ) -> None:
