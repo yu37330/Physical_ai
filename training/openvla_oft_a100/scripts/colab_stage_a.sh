@@ -35,6 +35,23 @@ if [[ ! -f "$RLDS_BUILDER_DIR/dataset_info.json" ]]; then
   if (( ${#available[@]} )); then
     echo "Converted profiles present: ${available[*]}" >&2
     echo "Re-run with DATASET_PROFILE=${available[0]}." >&2
+    exit 1
+  fi
+
+  # /content is wiped with the VM, and the dataset also gets deleted by hand to
+  # make room for the submission archive. Either way the copy on Drive is what
+  # saves the hour of reconversion, so say it is there rather than sending the
+  # caller back to a script that would re-download 2,400 files.
+  restorable=()
+  for candidate in "$DRIVE_RLDS_ROOT"/*/; do
+    [[ -f "$candidate$DATASET_NAME/$DATASET_VERSION/dataset_info.json" ]] || continue
+    restorable+=("$(basename "$candidate")")
+  done
+  if (( ${#restorable[@]} )); then
+    echo "On Drive and restorable: ${restorable[*]}" >&2
+    echo "Restore it, then re-run this script:" >&2
+    echo "  DATASET_PROFILE=${restorable[0]} bash $SCRIPT_DIR/colab_dataset_prepare.sh" >&2
+    echo "  DATASET_PROFILE=${restorable[0]} bash $0 $STAGE" >&2
   else
     echo "Run colab_dataset_prepare.sh first." >&2
   fi

@@ -27,6 +27,18 @@ if [[ "${PERSIST_RLDS:-1}" == "1" ]] \
   && [[ "${FORCE_RECONVERT:-0}" != "1" ]]
 then
   colab::section "Restoring RLDS from Drive"
+  # A restore that runs out of disk leaves a partial dataset whose
+  # dataset_info.json is present, so the next run passes its check and trains on
+  # missing shards without complaining. Refuse before writing anything.
+  restore_bytes=$(du -sb "$DRIVE_RLDS" | cut -f1)
+  restore_free=$(colab::free_bytes "$WORK_ROOT")
+  if (( restore_bytes + 1073741824 > restore_free )); then
+    echo "Not enough space to restore the RLDS: needs about" >&2
+    echo "  $((restore_bytes / 1024**3))GB plus margin, $((restore_free / 1024**3))GB free at $WORK_ROOT." >&2
+    echo "The submission archive under $SUBMISSION_BUILD_ROOT is the usual thing" >&2
+    echo "to remove, once it has been downloaded." >&2
+    exit 1
+  fi
   colab::sync_tree "$DRIVE_RLDS" "$RLDS_ROOT"
   echo "Restored: $RLDS_BUILDER"
   echo "Set FORCE_RECONVERT=1 to rebuild it from source instead."
