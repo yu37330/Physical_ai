@@ -14,9 +14,17 @@ FREEZE_VISION_LORA="${FREEZE_VISION_LORA:-True}"
 
 export WANDB_MODE="${WANDB_MODE:-offline}"
 
-# The upstream script calls torch.distributed barriers even for one GPU, so use
-# torchrun with a one-process group instead of plain `python`.
-torchrun --standalone --nnodes 1 --nproc-per-node 1 vla-scripts/finetune.py \
+# The upstream script calls torch.distributed barriers even for one GPU, so it
+# needs a process group; plain `python` would fail on the first barrier.
+#
+# Not --standalone: that selects the c10d rendezvous backend, which segfaults on
+# Colab inside c10d_rendezvous_backend._call_store before any training starts.
+# Giving an explicit master address and port uses the static backend instead and
+# skips that code path entirely. RDZV_ARGS allows going back for comparison.
+RDZV_ARGS="${RDZV_ARGS:---master_addr=127.0.0.1 --master_port=${MASTER_PORT:-29500}}"
+
+# shellcheck disable=SC2086
+torchrun --nnodes 1 --nproc-per-node 1 $RDZV_ARGS vla-scripts/finetune.py \
   --vla_path "$CHECKPOINT_DIR" \
   --component_checkpoint_dir "$CHECKPOINT_DIR" \
   --data_root_dir "$DATA_ROOT_DIR" \
