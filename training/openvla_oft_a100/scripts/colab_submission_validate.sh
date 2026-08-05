@@ -49,6 +49,8 @@ if [[ "${ASSEMBLE_CHECKPOINT:-1}" == "1" ]]; then
     --trained-run-dir "$STAGE_A_RUN" \
     --output "$MODEL_TARGET" \
     --report "$SUBMISSION_BUILD_ROOT/assembled_checkpoint.json"
+  # The weights just changed, so any existing archive is of a different model.
+  FORCE_ZIP=1
 fi
 
 if [[ ! -d "$MODEL_TARGET" ]] || [[ -z "$(ls -A "$MODEL_TARGET" 2>/dev/null)" ]]; then
@@ -58,16 +60,29 @@ if [[ ! -d "$MODEL_TARGET" ]] || [[ -z "$(ls -A "$MODEL_TARGET" 2>/dev/null)" ]]
   exit 1
 fi
 
+# The ZIP builder already skips these, but the directory check reports them and
+# they only appear once something has imported the runtime.
+find "$SUBMISSION_DIR" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
+
 colab::section "Static validation (directory)"
 python "$OFFICIAL_REPO_ROOT/validate_submission.py" "$SUBMISSION_DIR" \
   --static --pip-dry-run --json
 
-colab::section "Build ZIP on $SUBMISSION_BUILD_ROOT"
-mkdir -p "$SUBMISSION_BUILD_ROOT"
-python submission/openvla_oft_offline/tools/build_submission_zip.py \
-  --source "$SUBMISSION_DIR" \
-  --output "$ZIP_PATH"
-cat "$ZIP_PATH.json"
+# Rebuilding needs room for a second copy of a 14GB archive, and the existing one
+# is already validated. FORCE_ZIP=1 rebuilds after the checkpoint changes.
+if [[ -f "$ZIP_PATH" ]] && [[ "${FORCE_ZIP:-0}" != "1" ]]; then
+  colab::section "Reusing the existing ZIP"
+  echo "$ZIP_PATH"
+  echo "Set FORCE_ZIP=1 to rebuild it, for instance after reassembling the checkpoint."
+  [[ -f "$ZIP_PATH.json" ]] && cat "$ZIP_PATH.json"
+else
+  colab::section "Build ZIP on $SUBMISSION_BUILD_ROOT"
+  mkdir -p "$SUBMISSION_BUILD_ROOT"
+  python submission/openvla_oft_offline/tools/build_submission_zip.py \
+    --source "$SUBMISSION_DIR" \
+    --output "$ZIP_PATH"
+  cat "$ZIP_PATH.json"
+fi
 
 colab::section "Static validation (ZIP)"
 python "$OFFICIAL_REPO_ROOT/validate_submission.py" "$ZIP_PATH" \
