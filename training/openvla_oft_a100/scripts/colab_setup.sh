@@ -10,6 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=colab_env.sh
 source "$SCRIPT_DIR/colab_env.sh"
+colab::notify_on_exit "Colab environment setup"
 
 cd "$PROJECT_ROOT"
 

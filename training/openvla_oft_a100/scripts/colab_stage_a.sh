@@ -19,6 +19,7 @@ case "$STAGE" in
   s2) MAX_STEPS="${MAX_STEPS:-500}"; RUN_NAME="stage_a_s2_head_proprio_500" ;;
   *) echo "Usage: $0 {s1|s2}" >&2; exit 2 ;;
 esac
+colab::notify_on_exit "Stage A $STAGE ($MAX_STEPS steps)"
 
 RLDS_BUILDER_DIR="$RLDS_ROOT/$DATASET_NAME/$DATASET_VERSION"
 if [[ ! -f "$RLDS_BUILDER_DIR/dataset_info.json" ]]; then

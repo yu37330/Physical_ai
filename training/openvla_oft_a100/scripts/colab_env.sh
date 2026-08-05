@@ -47,6 +47,31 @@ colab::section() {
   printf '\n=== %s ===\n' "$1"
 }
 
+# Stage A and the submission build run long enough to walk away from, so they
+# report their own outcome. Never fatal: a notification that cannot be delivered
+# is not a reason to fail a run that just succeeded.
+colab::notify() {
+  python "$PROJECT_ROOT/scripts/notify_discord.py" \
+    --message "$1" --elapsed-seconds "${2:-0}" 2>&1 || true
+}
+
+colab::_notify_exit() {
+  local code=$?
+  if (( code == 0 )); then
+    colab::notify "OK: $COLAB_NOTIFY_LABEL" "$SECONDS"
+  else
+    colab::notify "FAILED (exit $code): $COLAB_NOTIFY_LABEL" "$SECONDS"
+  fi
+  return "$code"
+}
+
+# Call once, near the top of a wrapper. Reports on every exit path, including
+# the `set -e` ones, which are the failures worth hearing about.
+colab::notify_on_exit() {
+  COLAB_NOTIFY_LABEL="$1"
+  trap colab::_notify_exit EXIT
+}
+
 colab::require_drive() {
   if [[ ! -d "$DRIVE_ROOT" ]]; then
     echo "Google Drive is not mounted at $DRIVE_ROOT." >&2
