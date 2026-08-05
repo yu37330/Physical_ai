@@ -240,3 +240,22 @@ def test_pipeline_honours_an_explicit_profile(colab_env: dict[str, str]) -> None
     )
 
     assert "Profile: mini" in completed.stdout
+
+
+def test_tree_bytes_ignores_directory_inodes(tmp_path: Path, colab_env: dict[str, str]) -> None:
+    """du -sb counts the directories themselves, which ext4 reports as 4096 and
+    the Drive FUSE mount as 0. Comparing a restored tree against its source that
+    way makes a complete copy look short by 4096 per directory."""
+    tree = tmp_path / "tree"
+    (tree / "a" / "b").mkdir(parents=True)
+    (tree / "a" / "one.bin").write_bytes(b"\0" * 1000)
+    (tree / "a" / "b" / "two.bin").write_bytes(b"\0" * 24)
+
+    script = (
+        f'source "{SCRIPTS / "colab_env.sh"}"\n'
+        f'colab::tree_bytes "{tree.as_posix()}"\n'
+    )
+    completed = _bash(["-c", script], colab_env)
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "1024"

@@ -101,6 +101,14 @@ colab::persist() {
   echo "Persisted ${size_mb}MB -> $destination"
 }
 
+# Total size of the regular files under a tree, ignoring the directories
+# themselves. `du -sb` includes directory inodes, which ext4 reports as 4096 and
+# the Drive FUSE mount reports as 0, so comparing two identical trees across the
+# two filesystems differs by 4096 per directory and a good copy looks short.
+colab::tree_bytes() {
+  find "$1" -type f -printf '%s\n' 2>/dev/null | awk '{ total += $1 } END { print total + 0 }'
+}
+
 colab::free_bytes() {
   df -B1 --output=avail "$1" 2>/dev/null | tail -1 | tr -d ' '
 }
@@ -129,12 +137,12 @@ colab::persist_dataset() {
     return 1
   fi
   local needed available existing
-  needed=$(du -sb "$source" | cut -f1)
+  needed=$(colab::tree_bytes "$source")
 
   # Already there: the space it occupies is not space it needs, so checking free
   # space would refuse a copy that has nothing left to do.
   if [[ -d "$destination" ]]; then
-    existing=$(du -sb "$destination" | cut -f1)
+    existing=$(colab::tree_bytes "$destination")
     if (( existing == needed )); then
       echo "Already on Drive, unchanged: $destination"
       return 0

@@ -31,8 +31,8 @@ RLDS_BUILDER="$RLDS_ROOT/$DATASET_NAME/$DATASET_VERSION"
 drive_rlds_bytes=0
 work_rlds_bytes=0
 if [[ -d "$DRIVE_RLDS" ]]; then
-  drive_rlds_bytes=$(du -sb "$DRIVE_RLDS" | cut -f1)
-  [[ -d "$RLDS_ROOT" ]] && work_rlds_bytes=$(du -sb "$RLDS_ROOT" | cut -f1)
+  drive_rlds_bytes=$(colab::tree_bytes "$DRIVE_RLDS")
+  [[ -d "$RLDS_ROOT" ]] && work_rlds_bytes=$(colab::tree_bytes "$RLDS_ROOT")
 fi
 
 if [[ "${PERSIST_RLDS:-1}" == "1" ]] \
@@ -68,7 +68,7 @@ then
 
   # rsync exiting 0 is not the same as the tree matching: a source read error or
   # a full disk can end it cleanly with files missing.
-  restored_bytes=$(du -sb "$RLDS_ROOT" | cut -f1)
+  restored_bytes=$(colab::tree_bytes "$RLDS_ROOT")
   if (( restored_bytes != drive_rlds_bytes )); then
     echo "Restore is short: $restored_bytes of $drive_rlds_bytes bytes." >&2
     echo "Re-run this script; rsync will copy only what is missing." >&2
