@@ -20,10 +20,24 @@ case "$STAGE" in
   *) echo "Usage: $0 {s1|s2}" >&2; exit 2 ;;
 esac
 
-RLDS_BUILDER_DIR="$RLDS_ROOT/$DATASET_NAME/1.0.0"
+RLDS_BUILDER_DIR="$RLDS_ROOT/$DATASET_NAME/$DATASET_VERSION"
 if [[ ! -f "$RLDS_BUILDER_DIR/dataset_info.json" ]]; then
   echo "RLDS builder directory not found: $RLDS_BUILDER_DIR" >&2
-  echo "Run colab_dataset_prepare.sh first (DATASET_PROFILE=$DATASET_PROFILE)." >&2
+  echo "DATASET_PROFILE is '$DATASET_PROFILE'." >&2
+  # The default is mini, so a converted full dataset is easy to miss. Naming what
+  # exists beats making the caller guess, and beats picking one automatically:
+  # training on the wrong dataset would not announce itself.
+  available=()
+  for candidate in "$WORK_ROOT"/rlds/*/; do
+    [[ -f "$candidate$DATASET_NAME/$DATASET_VERSION/dataset_info.json" ]] || continue
+    available+=("$(basename "$candidate")")
+  done
+  if (( ${#available[@]} )); then
+    echo "Converted profiles present: ${available[*]}" >&2
+    echo "Re-run with DATASET_PROFILE=${available[0]}." >&2
+  else
+    echo "Run colab_dataset_prepare.sh first." >&2
+  fi
   exit 1
 fi
 if [[ ! -d "$BASE_CHECKPOINT" ]]; then
