@@ -63,3 +63,18 @@ colab::section "Pipeline complete"
 echo "Archive: $DRIVE_SUBMISSIONS/parc2026_track1_openvla_oft_plus.zip"
 echo "SHA256:  $DRIVE_SUBMISSIONS/submission_sha256.txt"
 echo "Download it from Drive and check the hash before submitting."
+
+# A finished run still holds the GPU until Colab reclaims it, which is about
+# ninety minutes of compute units spent on an idle machine when nobody is at the
+# keyboard. Everything durable is on Drive by this point.
+if [[ "${SHUTDOWN_WHEN_DONE:-0}" == "1" ]]; then
+  colab::section "Releasing the runtime"
+  # Explicitly, before the runtime goes: the EXIT trap would otherwise be racing
+  # a machine that is being taken away.
+  colab::notify "OK: Full pipeline, releasing the runtime" "$SECONDS"
+  trap - EXIT
+  python -c 'from google.colab import runtime; runtime.unassign()' || {
+    echo "Could not release the runtime automatically." >&2
+    echo "Stop it from colab.research.google.com: ランタイム > セッションの管理 > 終了" >&2
+  }
+fi
