@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -61,14 +62,33 @@ def main() -> None:
     if args.output.resolve().is_relative_to(source):
         raise SystemExit("Output zip must be outside the submission source directory")
 
-    with zipfile.ZipFile(args.output, "w", allowZip64=True) as archive:
-        for path, relative in files:
-            compression = (
-                zipfile.ZIP_STORED
-                if path.suffix in {".safetensors", ".pt", ".bin"}
-                else zipfile.ZIP_DEFLATED
-            )
-            archive.write(path, relative.as_posix(), compress_type=compression)
+    # Weights are stored rather than deflated, so the archive lands at roughly the
+    # size of its contents and the machine needs room for both at once. Running
+    # out midway leaves a partial archive occupying whatever space was left, which
+    # is worse than not starting: say so first, and name what can be freed.
+    free_bytes = shutil.disk_usage(args.output.parent).free
+    if free_bytes < extracted_bytes + 1024**3:
+        raise SystemExit(
+            f"Not enough space for the archive: needs about "
+            f"{extracted_bytes / 1024**3:.1f} GiB plus margin, "
+            f"{free_bytes / 1024**3:.1f} GiB free at {args.output.parent}.\n"
+            "The converted RLDS and downloaded episodes can be removed if they "
+            "are already on Drive."
+        )
+
+    try:
+        with zipfile.ZipFile(args.output, "w", allowZip64=True) as archive:
+            for path, relative in files:
+                compression = (
+                    zipfile.ZIP_STORED
+                    if path.suffix in {".safetensors", ".pt", ".bin"}
+                    else zipfile.ZIP_DEFLATED
+                )
+                archive.write(path, relative.as_posix(), compress_type=compression)
+    except OSError:
+        # A half-written archive is dead weight on a disk that just filled up.
+        args.output.unlink(missing_ok=True)
+        raise
 
     zip_bytes = args.output.stat().st_size
     if zip_bytes > MAX_ZIP_BYTES:
