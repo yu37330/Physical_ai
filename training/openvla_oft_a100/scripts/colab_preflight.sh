@@ -52,12 +52,18 @@ if [[ "${REQUIRE_DRIVE:-1}" != "1" ]]; then
   # drive_mounted and drive_disk_free stay in the report, just not required.
   preflight_args+=(--no-require-drive)
 fi
-# Stage A needs an A100 40GB. The T4 smoke only exercises plumbing, so it opts
-# out; the a100_40gb check is still reported, just not required.
-if [[ "${REQUIRE_A100:-1}" == "1" ]]; then
+# Stage A was budgeted for an A100 40GB, but it measured 15.33 GiB peak and ran
+# on an L4 in 3.99s/step, so what it actually needs is 22GB of VRAM. Requiring
+# the A100 by name rejected the GPU the work is being done on. The a100_40gb
+# check stays in the report; REQUIRE_A100=1 puts it back in force.
+if [[ "${REQUIRE_TRAINING_GPU:-1}" == "1" ]]; then
+  preflight_args+=(--require-training-gpu)
+fi
+if [[ "${REQUIRE_A100:-0}" == "1" ]]; then
   preflight_args+=(--require-a100-40gb)
-else
-  echo "REQUIRE_A100=0: reporting the A100 check without enforcing it."
+fi
+if [[ "${REQUIRE_TRAINING_GPU:-1}" != "1" && "${REQUIRE_A100:-0}" != "1" ]]; then
+  echo "Reporting the GPU checks without enforcing them."
 fi
 python training/openvla_oft_a100/scripts/preflight.py "${preflight_args[@]}"
 

@@ -21,16 +21,40 @@ RLDS_BUILDER="$RLDS_ROOT/$DATASET_NAME/$DATASET_VERSION"
 # Converting 800 episodes costs about an hour and /content does not survive the
 # VM. If a finished dataset is already on Drive, copy it back instead of
 # downloading and converting again.
+#
+# Completeness is measured in bytes, not by the presence of dataset_info.json.
+# rsync copies in name order, so an interrupted restore leaves that file in place
+# with shards still missing, and the next run would skip the restore and train on
+# a dataset with holes in it. rsync is incremental, so re-syncing a nearly
+# complete tree is cheap.
+drive_rlds_bytes=0
+work_rlds_bytes=0
+if [[ -d "$DRIVE_RLDS" ]]; then
+  drive_rlds_bytes=$(du -sb "$DRIVE_RLDS" | cut -f1)
+  [[ -d "$RLDS_ROOT" ]] && work_rlds_bytes=$(du -sb "$RLDS_ROOT" | cut -f1)
+fi
+
 if [[ "${PERSIST_RLDS:-1}" == "1" ]] \
-  && [[ ! -f "$RLDS_BUILDER/dataset_info.json" ]] \
+  && (( drive_rlds_bytes > 0 )) \
   && [[ -f "$DRIVE_RLDS/$DATASET_NAME/$DATASET_VERSION/dataset_info.json" ]] \
   && [[ "${FORCE_RECONVERT:-0}" != "1" ]]
 then
+  if (( work_rlds_bytes == drive_rlds_bytes )); then
+    colab::section "RLDS already restored"
+    echo "$RLDS_BUILDER matches Drive ($((drive_rlds_bytes / 1024**3))GB)."
+    echo "Set FORCE_RECONVERT=1 to rebuild it from source instead."
+    colab::section "Dataset prepare complete (already present)"
+    echo "RLDS: $RLDS_BUILDER"
+    echo "03_stage_a_train reads DATA_ROOT_DIR=$RLDS_ROOT"
+    exit 0
+  fi
+
   colab::section "Restoring RLDS from Drive"
   # A restore that runs out of disk leaves a partial dataset whose
   # dataset_info.json is present, so the next run passes its check and trains on
-  # missing shards without complaining. Refuse before writing anything.
-  restore_bytes=$(du -sb "$DRIVE_RLDS" | cut -f1)
+  # missing shards without complaining. Refuse before writing anything. Only the
+  # shortfall has to fit: rsync leaves what already matches alone.
+  restore_bytes=$(( drive_rlds_bytes - work_rlds_bytes ))
   restore_free=$(colab::free_bytes "$WORK_ROOT")
   if (( restore_bytes + 1073741824 > restore_free )); then
     echo "Not enough space to restore the RLDS: needs about" >&2
@@ -40,6 +64,15 @@ then
     exit 1
   fi
   colab::sync_tree "$DRIVE_RLDS" "$RLDS_ROOT"
+
+  # rsync exiting 0 is not the same as the tree matching: a source read error or
+  # a full disk can end it cleanly with files missing.
+  restored_bytes=$(du -sb "$RLDS_ROOT" | cut -f1)
+  if (( restored_bytes != drive_rlds_bytes )); then
+    echo "Restore is short: $restored_bytes of $drive_rlds_bytes bytes." >&2
+    echo "Re-run this script; rsync will copy only what is missing." >&2
+    exit 1
+  fi
   echo "Restored: $RLDS_BUILDER"
   echo "Set FORCE_RECONVERT=1 to rebuild it from source instead."
   colab::report_disk

@@ -47,6 +47,11 @@ def main() -> None:
     parser.add_argument("--minimum-work-free-gb", type=float, default=80.0)
     parser.add_argument("--minimum-drive-free-gb", type=float, default=30.0)
     parser.add_argument("--require-a100-40gb", action="store_true")
+    parser.add_argument("--require-training-gpu", action="store_true")
+    # Stage A trains the action head and proprio projector against a frozen 7B
+    # base, which measured 15.33 GiB peak on an L4. 22 keeps the L4 (22.49 GiB)
+    # and rejects the T4 (14.75 GiB), which cannot hold the base weights at all.
+    parser.add_argument("--minimum-training-vram-gib", type=float, default=22.0)
     parser.add_argument(
         "--no-require-drive",
         action="store_true",
@@ -101,6 +106,9 @@ def main() -> None:
         and int(drive_disk["free_bytes"]) >= args.minimum_drive_free_gb * 1024**3,
         "nvidia_smi_available": nvidia.get("returncode") == 0,
         "a100_40gb": has_a100 and has_40gb,
+        "training_gpu": any(
+            value >= args.minimum_training_vram_gib * 1024 for value in memory_values
+        ),
     }
     required_check_names = [
         "python_3_10_or_newer",

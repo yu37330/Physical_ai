@@ -114,6 +114,18 @@ def test_preflight_makes_the_a100_check_opt_in(tmp_path: Path) -> None:
     assert "a100_40gb" in with_flag["required_checks"]
 
 
+def test_preflight_gates_stage_a_on_vram_not_on_the_a100_name(tmp_path: Path) -> None:
+    """Stage A measured 15.33 GiB peak and trains on an L4 at 3.99s/step, so
+    requiring the A100 by name rejects the GPU the work is done on."""
+    report = _run_preflight(
+        tmp_path / "a", ["--minimum-drive-free-gb", "0", "--require-training-gpu"]
+    )
+
+    assert "training_gpu" in report["required_checks"]
+    assert "a100_40gb" not in report["required_checks"]
+    assert "a100_40gb" in report["checks"]
+
+
 def test_preflight_makes_the_drive_checks_opt_out(tmp_path: Path) -> None:
     """計測だけの実行はDriveへ何も書かないので、mount必須で止めない。"""
     default = _run_preflight(tmp_path / "a", [])
