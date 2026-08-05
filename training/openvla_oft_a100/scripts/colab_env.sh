@@ -103,11 +103,23 @@ colab::persist_dataset() {
     echo "Nothing to persist, missing: $source" >&2
     return 1
   fi
-  local needed available
+  local needed available existing
   needed=$(du -sb "$source" | cut -f1)
+
+  # Already there: the space it occupies is not space it needs, so checking free
+  # space would refuse a copy that has nothing left to do.
+  if [[ -d "$destination" ]]; then
+    existing=$(du -sb "$destination" | cut -f1)
+    if (( existing == needed )); then
+      echo "Already on Drive, unchanged: $destination"
+      return 0
+    fi
+  fi
+
   available=$(colab::free_bytes "$DRIVE_ROOT")
-  # Keep a gigabyte spare so manifests and trained components still fit.
-  if (( needed + 1073741824 > available )); then
+  # Keep half a gigabyte spare for manifests and the trained components, which
+  # run about 370MB per stage.
+  if (( needed + 536870912 > available + ${existing:-0} )); then
     echo "Not copying the dataset to Drive: needs $((needed / 1024**3))GB," >&2
     echo "  only $((available / 1024**3))GB free. Set PERSIST_RLDS=0 to silence this." >&2
     return 1
