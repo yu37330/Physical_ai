@@ -64,6 +64,18 @@ if [[ ! -d "$BASE_CHECKPOINT" ]]; then
 fi
 
 S1_RUN_DIR="$RUN_ROOT/stage_a_s1_head_proprio_100"
+# The gate asks whether S1 passed, not whether this particular VM ran it. Every
+# run persists to Drive, so a fresh runtime would otherwise be told to redo six
+# minutes of training whose result is already sitting there.
+if [[ "$STAGE" == "s2" ]] \
+  && ! compgen -G "$S1_RUN_DIR/*/action_head--*checkpoint.pt" > /dev/null \
+  && compgen -G "$DRIVE_EXPERIMENTS/stage_a_s1_head_proprio_100/*/action_head--*checkpoint.pt" > /dev/null
+then
+  colab::section "Restoring the S1 run from Drive"
+  mkdir -p "$RUN_ROOT"
+  cp -R "$DRIVE_EXPERIMENTS/stage_a_s1_head_proprio_100" "$S1_RUN_DIR"
+  echo "Restored: $S1_RUN_DIR"
+fi
 if [[ "$STAGE" == "s2" ]] && ! compgen -G "$S1_RUN_DIR/*/action_head--*checkpoint.pt" > /dev/null; then
   echo "S1 produced no action head checkpoint under $S1_RUN_DIR." >&2
   echo "S2 must not run until S1 passes its gate." >&2
