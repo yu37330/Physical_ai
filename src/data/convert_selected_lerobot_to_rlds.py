@@ -36,6 +36,13 @@ def _episode_paths(root: Path, episode_index: int, front_video_key: str, wrist_v
     }
 
 
+def _parquet_row_count(path: Path) -> int:
+    """Frame count for one episode, read from the parquet footer only."""
+    import pyarrow.parquet as pq
+
+    return int(pq.ParquetFile(path).metadata.num_rows)
+
+
 def _read_vectors(path: Path, state_column: str, action_column: str) -> tuple[np.ndarray, np.ndarray]:
     try:
         import pyarrow.parquet as pq
@@ -48,11 +55,25 @@ def _read_vectors(path: Path, state_column: str, action_column: str) -> tuple[np
     return states, actions
 
 
-def _read_video(path: Path, *, image_size: int, rotate_180: bool) -> np.ndarray:
+def _decode_rgb_frames(path: Path) -> list[np.ndarray]:
+    """Decode a video to RGB frames.
+
+    The LIBERO-plus LeRobot videos are AV1, which the FFmpeg bundled with
+    opencv-python-headless cannot decode: it logs "Missing Sequence Header" and
+    then returns zero frames rather than failing, so a missing decoder looks like
+    an empty file. PyAV bundles libdav1d and handles AV1 as well as the mp4v used
+    by the synthetic fixtures, so prefer it and keep OpenCV as the fallback.
+    """
     try:
-        import cv2
-    except ImportError as exc:
-        raise RuntimeError("opencv-python-headless is required for video conversion") from exc
+        import av
+    except ImportError:
+        av = None
+
+    if av is not None:
+        with av.open(str(path)) as container:
+            return [frame.to_ndarray(format="rgb24") for frame in container.decode(video=0)]
+
+    import cv2
 
     capture = cv2.VideoCapture(str(path))
     if not capture.isOpened():
@@ -63,16 +84,31 @@ def _read_video(path: Path, *, image_size: int, rotate_180: bool) -> np.ndarray:
             ok, frame = capture.read()
             if not ok:
                 break
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            if rotate_180:
-                frame = np.rot90(frame, 2).copy()
-            if frame.shape[:2] != (image_size, image_size):
-                frame = cv2.resize(frame, (image_size, image_size), interpolation=cv2.INTER_AREA)
-            frames.append(frame.astype(np.uint8, copy=False))
+            frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     finally:
         capture.release()
-    if not frames:
-        raise ValueError(f"Video contains no frames: {path}")
+    return frames
+
+
+def _read_video(path: Path, *, image_size: int, rotate_180: bool) -> np.ndarray:
+    try:
+        import cv2
+    except ImportError as exc:
+        raise RuntimeError("opencv-python-headless is required for video conversion") from exc
+
+    decoded = _decode_rgb_frames(path)
+    if not decoded:
+        raise ValueError(
+            f"Video contains no frames: {path}. Install `av` if this is an AV1 file."
+        )
+
+    frames: list[np.ndarray] = []
+    for frame in decoded:
+        if rotate_180:
+            frame = np.rot90(frame, 2).copy()
+        if frame.shape[:2] != (image_size, image_size):
+            frame = cv2.resize(frame, (image_size, image_size), interpolation=cv2.INTER_AREA)
+        frames.append(frame.astype(np.uint8, copy=False))
     return np.stack(frames, axis=0)
 
 
@@ -217,6 +253,29 @@ def _build_tfds(
     builder = ParcLiberoPlusSelected(data_dir=str(output_root))
     builder.download_and_prepare()
 
+    # download_and_prepare() reuses an already prepared dataset, in which case
+    # _generate_examples never runs and generated_frame_counts stays at zero. That
+    # zero used to reach dataset_manifest.json's frame_count, which the submission
+    # report cites. Count from the source parquet footers instead, which holds
+    # either way, and cross-check when generation did run.
+    source_frame_counts = {
+        split: sum(
+            _parquet_row_count(
+                _episode_paths(source_root, int(row["episode_index"]), front_video_key, wrist_video_key)[
+                    "parquet"
+                ]
+            )
+            for row in rows
+        )
+        for split, rows in episodes_by_split.items()
+    }
+    regenerated = any(generated_frame_counts.values())
+    if regenerated and generated_frame_counts != source_frame_counts:
+        raise ValueError(
+            "Frames written to RLDS do not match the source parquet rows: "
+            f"{generated_frame_counts} != {source_frame_counts}"
+        )
+
     report = {
         "dataset_name": DATASET_NAME,
         "builder_name": builder.name,
@@ -229,9 +288,10 @@ def _build_tfds(
             "validation": len(episodes_by_split["val"]),
         },
         "frame_counts": {
-            "train": generated_frame_counts["train"],
-            "validation": generated_frame_counts["val"],
+            "train": source_frame_counts["train"],
+            "validation": source_frame_counts["val"],
         },
+        "regenerated_this_run": regenerated,
         "tfds_splits": ["train", "val"],
         "contract": {
             "state_dim": STATE_DIM,

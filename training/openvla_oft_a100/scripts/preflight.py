@@ -47,6 +47,17 @@ def main() -> None:
     parser.add_argument("--minimum-work-free-gb", type=float, default=80.0)
     parser.add_argument("--minimum-drive-free-gb", type=float, default=30.0)
     parser.add_argument("--require-a100-40gb", action="store_true")
+    parser.add_argument("--require-training-gpu", action="store_true")
+    # Stage A trains the action head and proprio projector against a frozen 7B
+    # base, which measured 15.33 GiB peak on an L4. 22 keeps the L4 (22.49 GiB)
+    # and rejects the T4 (14.75 GiB), which cannot hold the base weights at all.
+    parser.add_argument("--minimum-training-vram-gib", type=float, default=22.0)
+    parser.add_argument(
+        "--no-require-drive",
+        action="store_true",
+        help="Report the Drive checks without requiring them. For runs that "
+        "measure something and persist nothing.",
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -95,16 +106,21 @@ def main() -> None:
         and int(drive_disk["free_bytes"]) >= args.minimum_drive_free_gb * 1024**3,
         "nvidia_smi_available": nvidia.get("returncode") == 0,
         "a100_40gb": has_a100 and has_40gb,
+        "training_gpu": any(
+            value >= args.minimum_training_vram_gib * 1024 for value in memory_values
+        ),
     }
     required_check_names = [
         "python_3_10_or_newer",
         "project_files_present",
         "git_commit_resolved",
-        "drive_mounted",
         "work_disk_free",
-        "drive_disk_free",
         "nvidia_smi_available",
     ]
+    if not args.no_require_drive:
+        required_check_names[3:3] = ["drive_mounted", "drive_disk_free"]
+    if args.require_training_gpu:
+        required_check_names.append("training_gpu")
     if args.require_a100_40gb:
         required_check_names.append("a100_40gb")
     status = "pass" if all(checks[name] for name in required_check_names) else "fail"
@@ -130,6 +146,23 @@ def main() -> None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     if status != "pass":
+        # The JSON alone makes a failure hard to read in a terminal, so restate
+        # the failing gates with the numbers that caused them.
+        failed = [name for name in required_check_names if not checks[name]]
+        print("\nPreflight failed:", ", ".join(failed), file=sys.stderr)
+        for name, disk, minimum in (
+            ("work_disk_free", work_disk, args.minimum_work_free_gb),
+            ("drive_disk_free", drive_disk, args.minimum_drive_free_gb),
+        ):
+            if name in failed:
+                free_gb = int(disk["free_bytes"]) / 1024**3
+                print(
+                    f"  {name}: {free_gb:.1f}GB free at {disk['checked_path']},"
+                    f" need {minimum:g}GB",
+                    file=sys.stderr,
+                )
+        if "a100_40gb" in failed:
+            print(f"  a100_40gb: {gpu_text or 'no GPU reported'}", file=sys.stderr)
         raise SystemExit(1)
 
 

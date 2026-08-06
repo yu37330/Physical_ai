@@ -19,6 +19,7 @@ from src.data.rlds_contract import (  # noqa: E402
     DATASET_NAME,
     STATE_DIM,
     validate_batch_contract,
+    validate_transform_contract,
 )
 
 
@@ -89,9 +90,15 @@ def validate_split(
         num_workers=0,
     )
 
+    # Check one pre-collation sample first. pixel_values_wrist only exists here;
+    # the collator folds it into pixel_values and drops the key, so a collated
+    # batch alone cannot show whether the wrist camera survived.
+    transform_report = validate_transform_contract(next(iter(dataset)))
+    single_image_channels = transform_report["single_image_channels"]
+
     sample_reports: list[dict[str, Any]] = []
     for index, batch in enumerate(loader):
-        report = validate_batch_contract(batch)
+        report = validate_batch_contract(batch, single_image_channels=single_image_channels)
         report["index"] = index
         report["actions_dtype"] = str(batch["actions"].dtype)
         report["proprio_dtype"] = str(batch["proprio"].dtype)
@@ -106,6 +113,7 @@ def validate_split(
     return {
         "split": split,
         "sample_count": len(sample_reports),
+        "transform_sample": transform_report,
         "samples": sample_reports,
         "dataset_statistics": _jsonable(dataset.dataset_statistics),
     }
@@ -145,8 +153,11 @@ def main() -> None:
             "action_chunk_length": ACTION_CHUNK_LENGTH,
             "action_dim": ACTION_DIM,
             "state_dim": STATE_DIM,
-            "front_tensor_key": "pixel_values",
-            "wrist_tensor_key": "pixel_values_wrist",
+            # Pre-collation the two cameras are separate tensors; the collator
+            # concatenates them into pixel_values along dim=1.
+            "transform_front_key": "pixel_values",
+            "transform_wrist_key": "pixel_values_wrist",
+            "collated_key": "pixel_values",
             "two_camera_input": True,
         },
         "splits": split_reports,

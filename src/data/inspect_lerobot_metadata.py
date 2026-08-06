@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
-from libero_taxonomy import classify_instruction, load_suite_map, normalize_instruction
+from .libero_taxonomy import classify_instruction, load_suite_map, normalize_instruction
 
 
 def _read_json(path: Path) -> dict[str, Any]:

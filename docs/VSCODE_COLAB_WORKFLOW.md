@@ -46,6 +46,8 @@ bash training/openvla_oft_a100/scripts/colab_submission_validate.sh
 
 Terminal中心にすると、`%cd`と`!cd`の状態差、`set -euo pipefail`の効き方、複数行の環境変数といったNotebook特有の問題が構造的に起きません。
 
+ただし**10分を超える処理はTerminalではなくNotebookのCellから実行してください**。Colabのアイドル判定はKernel実行を見ており、Terminalの活動は数えられないため、ランタイムごと回収されます。詳細は「セッションが落ちる場合」を参照。
+
 ### 3. Notebookで結果確認
 
 各NotebookのGate確認Cellで、Manifestとレポートの`status`を確認します。
@@ -81,6 +83,105 @@ REQUIRE_A100=0 bash training/openvla_oft_a100/scripts/colab_preflight.sh
 
 `a100_40gb`の判定自体はレポートに残り、必須Checkから外れるだけです。
 
+## Hugging Face のレート制限（HF_TOKEN）
+
+800 Episodeの取得は約2,400ファイルのリクエストになり、匿名アクセスは途中で止まります。
+
+```text
+429 Too Many Requests ... We had to rate limit your IP
+```
+
+`snapshot_with_retry`がRetry-Afterを見て再試行し、再試行時はworkerを1本に落としますが、**根本的な対処はHF_TOKENの設定**です。認証済みリクエストは上限が大幅に緩みます。エラー本文自身がそう案内しています。
+
+Colab拡張機能では`userdata.get()`（Colab Secrets）が使えないため、Notebookのセルで入力します。**Tokenをセルへ直接書かないでください。** Notebookに保存されて共有事故につながります。
+
+```python
+import getpass, os
+os.environ["HF_TOKEN"] = getpass.getpass("HF token: ")
+```
+
+`getpass`は入力を表示せず、Notebookにも残りません。Tokenは[Hugging Faceのアカウント設定](https://huggingface.co/settings/tokens)でread権限のものを発行します。
+
+同じKernelから起動したプロセスへは環境変数が引き継がれるので、以降のセルで`!bash ...`を呼ぶ分にはこれで足ります。Colab Terminalは別プロセスなので、そちら側で実行する場合は`huggingface-cli login`を使ってください。
+
+再開時、ダウンロード済みのファイルはスキップされます。制限に当たっても最初からやり直しにはなりません。
+
+## セッションが落ちる場合
+
+### 長い処理はNotebookのCellから実行する（最重要）
+
+**Colabのアイドル判定はNotebookのKernel実行を見ており、Colab Terminalでの作業は活動として数えられません。** Terminalで10分以上かかる処理を回していると、Kernelがアイドルとみなされ、次の通知とともにランタイムごと回収されます。
+
+```text
+Server "Colab GPU L4" has been removed, either outside of the extension or due to inactivity.
+```
+
+そのため、**時間のかかる処理はNotebookのCellから実行します**。Cellが走っている間はKernelがビジーなので回収されません。Notebook 00-06 がラッパーScriptを呼ぶ構成になっているのはこのためでもあります。
+
+Notebookに無い処理も、Cellから同じScriptを呼べば同じ効果が得られます。
+
+```python
+!bash training/openvla_oft_a100/scripts/colab_setup.sh 2>&1 | tee /content/work/setup.log
+```
+
+`tee`しておくと、表示が流れてもログが残ります。
+
+Terminalは短い確認、デバッグ、失敗したStepだけの再実行に向いています。**10分を超える処理をTerminalの前景で回さないでください。**
+
+### ターミナルだけ切れた（VMは生きている）
+
+前景で走らせたコマンドはターミナルと一緒に死にます。**長いものは`nohup`で切り離してログへ流してください。**
+
+```bash
+cd /content/Physical_ai
+mkdir -p /content/work
+nohup bash training/openvla_oft_a100/scripts/colab_setup.sh > /content/work/setup.log 2>&1 &
+tail -f /content/work/setup.log
+```
+
+`tail`は`Ctrl+C`で抜けても本体は走り続けます。ターミナルが切れたら、繋ぎ直して`tail -f`し直すだけです。
+
+```bash
+tail -f /content/work/setup.log      # 進捗を再表示
+pgrep -af colab_setup.sh             # まだ走っているか確認
+```
+
+### VMは生きているがスクリプトをやり直したい
+
+`bootstrap_colab.sh`は冪等です。環境が揃っていれば10分のpip installを飛ばします。
+
+```bash
+python training/openvla_oft_a100/scripts/check_openvla_env.py
+```
+
+これが`status: ok`なら再構築は不要です。判定はimportの成否、numpyのメジャーバージョン、そしてtransformersがForkかPyPI版かまで見ます（`colab_action_parity.sh`はForkをPyPI版へ入れ替えるため、学習へ戻る前に検出できるようにしてあります）。
+
+強制的に作り直す場合は`FORCE_BOOTSTRAP=1`を付けます。
+
+### VMごと落ちた
+
+`/content`は消えるので作り直しです。Checkpointの再取得は1分程度、pip installが10分程度かかります。
+
+Driveの空きが足りず、15GBのCheckpointを退避しておくことはできません。復旧は次の1ブロックで済みます。
+
+```bash
+cd /content && rm -rf Physical_ai openvla-oft work && mkdir -p work
+git clone -b main https://github.com/yu37330/Physical_ai.git
+cd Physical_ai
+nohup bash -c '
+  REQUIRE_DRIVE=0 REQUIRE_A100=0 bash training/openvla_oft_a100/scripts/colab_setup.sh
+' > /content/setup.log 2>&1 &
+tail -f /content/setup.log
+```
+
+### サーバー削除後にNotebookが反応しなくなる
+
+`Server ... has been removed` の通知が出た後、同じNotebookでCellを実行しても何も起きないことがあります。これはVS Code Jupyter側の既知の不具合（microsoft/vscode-jupyter#17094）で、サーバー削除時にNotebook Controllerが破棄されるためです。**Notebookを開き直す**と復帰します。
+
+### 作業を終えたら明示的に落とす
+
+`Colab: Remove Server`で落とさないと、接続中はアイドルでもコンピューティングユニットを消費し続けます。
+
 ## 環境変数
 
 `colab_env.sh`が全Scriptの共通契約です。既定値を変える場合だけ上書きします。
@@ -94,6 +195,9 @@ REQUIRE_A100=0 bash training/openvla_oft_a100/scripts/colab_preflight.sh
 | `DATASET_PROFILE` | `mini` | `mini`（3 Episode）または`full`（800 Episode） |
 | `SKIP_PREFLIGHT` | `0` | `1`でPreflight全体を省略 |
 | `REQUIRE_A100` | `1` | `0`でA100 40GBを必須Checkから外す（T4スモーク用） |
+| `REQUIRE_DRIVE` | `1` | `0`でDriveのmount要求を外す（計測のみの実行用） |
+| `FORCE_BOOTSTRAP` | `0` | `1`でOpenVLA-OFT環境を無条件に作り直す |
+| `USE_PYPI_TRANSFORMERS` | `1` | 提出計測時にForkをPyPI版へ入れ替える |
 | `RUN_DYNAMIC_SMOKE` | `0` | `1`で提出物の動的スモークを実行 |
 
 `colab::persist`が既定256MB、Stage Aは既定1024MBを超えるDriveコピーを拒否します。大きな成果物をDriveへ入れて容量を枯渇させる事故を防ぐためです。

@@ -10,13 +10,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=colab_env.sh
 source "$SCRIPT_DIR/colab_env.sh"
+colab::notify_on_exit "Colab environment setup"
 
 cd "$PROJECT_ROOT"
 
 # Notebook 00 runs the same script, so set SKIP_PREFLIGHT=1 when the gate has
 # already passed in this session.
+#
+# This stage installs the OpenVLA-OFT environment and the ~15GB checkpoint; the
+# 80GB default belongs to the 800 episode RLDS conversion further down the
+# pipeline, and demanding it here fails runtimes that could finish setup fine.
 if [[ "${SKIP_PREFLIGHT:-0}" != "1" ]]; then
-  bash "$SCRIPT_DIR/colab_preflight.sh"
+  MINIMUM_WORK_FREE_GB="${MINIMUM_WORK_FREE_GB:-40}" bash "$SCRIPT_DIR/colab_preflight.sh"
 else
   colab::section "Runtime"
   python scripts/check_colab_runtime.py --require-cuda

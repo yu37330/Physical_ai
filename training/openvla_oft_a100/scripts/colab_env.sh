@@ -28,16 +28,48 @@ SUBMISSION_BUILD_ROOT="${SUBMISSION_BUILD_ROOT:-$WORK_ROOT/submission}"
 OFFICIAL_REPO_ROOT="${OFFICIAL_REPO_ROOT:-/content/PARC2026_pre}"
 
 DRIVE_ADMIN="$DRIVE_ROOT/00_admin"
+DRIVE_RLDS_ROOT="$DRIVE_ROOT/20_processed/rlds"
 DRIVE_MODELS="$DRIVE_ROOT/30_models"
 DRIVE_EXPERIMENTS="$DRIVE_ROOT/40_experiments"
 DRIVE_DATASETS="$DRIVE_EXPERIMENTS/datasets"
 DRIVE_SUBMISSIONS="$DRIVE_ROOT/60_submissions"
 
+# A stalled Hugging Face transfer otherwise hangs forever with the process alive
+# and nothing raised to retry on. huggingface_hub reads this at import time.
+export HF_HUB_DOWNLOAD_TIMEOUT="${HF_HUB_DOWNLOAD_TIMEOUT:-30}"
+
+# Must match src/data/rlds_contract.py; tests/test_colab_wrappers.py pins that.
 DATASET_NAME="${DATASET_NAME:-parc_libero_plus_selected}"
+DATASET_VERSION="${DATASET_VERSION:-1.0.0}"
 DATASET_MIXTURE="${DATASET_MIXTURE:-parc_stage_a_plus_only}"
 
 colab::section() {
   printf '\n=== %s ===\n' "$1"
+}
+
+# Stage A and the submission build run long enough to walk away from, so they
+# report their own outcome. Never fatal: a notification that cannot be delivered
+# is not a reason to fail a run that just succeeded.
+colab::notify() {
+  python "$PROJECT_ROOT/scripts/notify_discord.py" \
+    --message "$1" --elapsed-seconds "${2:-0}" 2>&1 || true
+}
+
+colab::_notify_exit() {
+  local code=$?
+  if (( code == 0 )); then
+    colab::notify "OK: $COLAB_NOTIFY_LABEL" "$SECONDS"
+  else
+    colab::notify "FAILED (exit $code): $COLAB_NOTIFY_LABEL" "$SECONDS"
+  fi
+  return "$code"
+}
+
+# Call once, near the top of a wrapper. Reports on every exit path, including
+# the `set -e` ones, which are the failures worth hearing about.
+colab::notify_on_exit() {
+  COLAB_NOTIFY_LABEL="$1"
+  trap colab::_notify_exit EXIT
 }
 
 colab::require_drive() {
@@ -67,6 +99,92 @@ colab::persist() {
   mkdir -p "$(dirname "$destination")"
   cp -R "$source" "$destination"
   echo "Persisted ${size_mb}MB -> $destination"
+}
+
+# Total size of the regular files under a tree, ignoring the directories
+# themselves. `du -sb` includes directory inodes, which ext4 reports as 4096 and
+# the Drive FUSE mount reports as 0, so comparing two identical trees across the
+# two filesystems differs by 4096 per directory and a good copy looks short.
+# printf "%.0f", not print: Colab's awk is mawk, which formats with OFMT %.6g and
+# renders a 13GB total as 1.28926e+10. Shell arithmetic cannot read that back, so
+# the comparison fails with a syntax error instead of a number.
+colab::tree_bytes() {
+  find "$1" -type f -printf '%s\n' 2>/dev/null \
+    | awk '{ total += $1 } END { printf "%.0f\n", total }'
+}
+
+# Bring a Stage A run back from Drive after /content has been recycled. Every
+# run persists there, so a fresh runtime should not be told to redo training
+# whose result is already sitting on Drive. Returns non-zero when neither copy
+# has a checkpoint, which is the caller's cue that the stage really has not run.
+colab::restore_run() {
+  local name="$1"
+  local local_dir="$RUN_ROOT/$name"
+  local drive_dir="$DRIVE_EXPERIMENTS/$name"
+
+  if compgen -G "$local_dir/*/action_head--*checkpoint.pt" > /dev/null; then
+    return 0
+  fi
+  if ! compgen -G "$drive_dir/*/action_head--*checkpoint.pt" > /dev/null; then
+    return 1
+  fi
+
+  colab::section "Restoring $name from Drive"
+  mkdir -p "$RUN_ROOT"
+  cp -R "$drive_dir" "$local_dir"
+  echo "Restored: $local_dir"
+}
+
+colab::free_bytes() {
+  df -B1 --output=avail "$1" 2>/dev/null | tail -1 | tr -d ' '
+}
+
+# rsync is present on Colab and preferable for large trees, but not everywhere
+# these scripts get exercised.
+colab::sync_tree() {
+  local source="$1" destination="$2"
+  mkdir -p "$destination"
+  if command -v rsync > /dev/null; then
+    rsync -a --delete "$source/" "$destination/"
+  else
+    rm -rf "${destination:?}"/*
+    cp -a "$source/." "$destination/"
+  fi
+}
+
+# Converting 800 episodes takes about an hour, and /content is wiped whenever the
+# VM goes. The RLDS is roughly 9GB, far past colab::persist's small-artifact
+# limit, so it gets its own copy with an explicit free-space check rather than a
+# blanket refusal.
+colab::persist_dataset() {
+  local source="$1" destination="$2"
+  if [[ ! -d "$source" ]]; then
+    echo "Nothing to persist, missing: $source" >&2
+    return 1
+  fi
+  local needed available existing
+  needed=$(colab::tree_bytes "$source")
+
+  # Already there: the space it occupies is not space it needs, so checking free
+  # space would refuse a copy that has nothing left to do.
+  if [[ -d "$destination" ]]; then
+    existing=$(colab::tree_bytes "$destination")
+    if (( existing == needed )); then
+      echo "Already on Drive, unchanged: $destination"
+      return 0
+    fi
+  fi
+
+  available=$(colab::free_bytes "$DRIVE_ROOT")
+  # Keep half a gigabyte spare for manifests and the trained components, which
+  # run about 370MB per stage.
+  if (( needed + 536870912 > available + ${existing:-0} )); then
+    echo "Not copying the dataset to Drive: needs $((needed / 1024**3))GB," >&2
+    echo "  only $((available / 1024**3))GB free. Set PERSIST_RLDS=0 to silence this." >&2
+    return 1
+  fi
+  colab::sync_tree "$source" "$destination"
+  echo "Persisted $((needed / 1024**2))MB -> $destination"
 }
 
 colab::report_disk() {

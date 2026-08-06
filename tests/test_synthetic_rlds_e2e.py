@@ -37,6 +37,9 @@ def test_synthetic_lerobot_to_rlds_and_source_parity(tmp_path: Path) -> None:
     assert report["tfds_splits"] == ["train", "val"]
     assert report["contract"]["state_dim"] == 8
     assert report["contract"]["action_dim"] == 7
+    # 3 episodes of 8 frames, split 2 train / 1 validation.
+    assert report["frame_counts"] == {"train": 16, "validation": 8}
+    assert report["regenerated_this_run"] is True
 
     import tensorflow_datasets as tfds
 
@@ -74,3 +77,31 @@ def test_synthetic_lerobot_to_rlds_and_source_parity(tmp_path: Path) -> None:
 
     persisted_selection = json.loads(selection_path.read_text(encoding="utf-8"))
     assert persisted_selection["counts"]["total"] == 3
+
+    # Re-running reuses the prepared dataset, so _generate_examples never fires.
+    # The frame counts must still be right: they feed dataset_manifest.json's
+    # frame_count, which the submission report cites, and a rerun used to write 0.
+    # Go through the CLI because the builder class registers globally and cannot
+    # be defined twice in one process, which is also why this only ever showed up
+    # on a second Colab run.
+    import subprocess
+    import sys
+
+    rerun_report = tfds_root / "rerun_report.json"
+    completed = subprocess.run(
+        [
+            sys.executable, "-m", "src.data.convert_selected_lerobot_to_rlds",
+            "--source-root", str(source_root),
+            "--selection", str(selection_path),
+            "--output-root", str(tfds_root),
+            "--report", str(rerun_report),
+            "--image-size", "32",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    rebuilt = json.loads(rerun_report.read_text(encoding="utf-8"))
+    assert rebuilt["regenerated_this_run"] is False
+    assert rebuilt["frame_counts"] == {"train": 16, "validation": 8}
+    assert rebuilt["episode_counts"] == {"train": 2, "validation": 1}

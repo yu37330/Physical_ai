@@ -1,0 +1,281 @@
+from __future__ import annotations
+
+import sys
+import types
+
+import pytest
+
+from src.data import hf_download
+
+
+class _Response:
+    def __init__(self, status_code: int, retry_after: str | None = None) -> None:
+        self.status_code = status_code
+        self.headers = {"Retry-After": retry_after} if retry_after else {}
+
+
+class _HfHubHTTPError(Exception):
+    def __init__(self, message: str, response: _Response | None = None) -> None:
+        super().__init__(message)
+        self.response = response
+
+
+@pytest.fixture(autouse=True)
+def _no_sleeping(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(hf_download.time, "sleep", lambda seconds: None)
+
+
+@pytest.fixture
+def hub(monkeypatch: pytest.MonkeyPatch):
+    """Stand in for huggingface_hub, which snapshot_with_retry imports lazily."""
+    calls: list[dict] = []
+
+    def snapshot_download(**kwargs):
+        calls.append(dict(kwargs))
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    class _Api:
+        """Accepts the token by default; tests that care override HfApi."""
+
+        def whoami(self, token=None):
+            return {"name": "test-user"}
+
+    outcomes: list = []
+    module = types.ModuleType("huggingface_hub")
+    module.snapshot_download = snapshot_download
+    module.HfApi = _Api
+    errors = types.ModuleType("huggingface_hub.errors")
+    errors.HfHubHTTPError = _HfHubHTTPError
+    monkeypatch.setitem(sys.modules, "huggingface_hub", module)
+    monkeypatch.setitem(sys.modules, "huggingface_hub.errors", errors)
+    monkeypatch.setenv("HF_TOKEN", "set-so-the-warning-is-quiet")
+    return types.SimpleNamespace(calls=calls, outcomes=outcomes, module=module)
+
+
+def test_a_successful_download_is_not_retried(hub) -> None:
+    hub.outcomes.append("/local/path")
+
+    assert hf_download.snapshot_with_retry(repo_id="x") == "/local/path"
+    assert len(hub.calls) == 1
+
+
+def test_rate_limiting_is_retried_and_drops_to_one_worker(hub) -> None:
+    """Concurrency is what trips the limit, so a retry must stop competing with
+    itself rather than repeating the same burst."""
+    hub.outcomes.extend(
+        [
+            _HfHubHTTPError("429 Client Error: Too Many Requests", _Response(429)),
+            "/local/path",
+        ]
+    )
+
+    assert hf_download.snapshot_with_retry(repo_id="x") == "/local/path"
+    assert len(hub.calls) == 2
+    assert "max_workers" not in hub.calls[0]
+    assert hub.calls[1]["max_workers"] == 1
+
+
+def test_a_stalled_transfer_is_retried(hub) -> None:
+    """The 2,400 file download froze at 1,994 with the process alive. With a
+    download timeout set that surfaces as a timeout, and resuming works because
+    completed files are kept."""
+    hub.outcomes.extend([TimeoutError("The read operation timed out"), "/local/path"])
+
+    assert hf_download.snapshot_with_retry(repo_id="x") == "/local/path"
+    assert len(hub.calls) == 2
+
+
+def test_a_dropped_connection_is_retried(hub) -> None:
+    hub.outcomes.extend([ConnectionResetError("Connection reset by peer"), "/local/path"])
+
+    assert hf_download.snapshot_with_retry(repo_id="x") == "/local/path"
+    assert len(hub.calls) == 2
+
+
+def test_an_unrelated_os_error_is_not_retried(hub) -> None:
+    """A full disk will not fix itself; retrying only delays the real message."""
+    hub.outcomes.append(OSError("No space left on device"))
+
+    with pytest.raises(OSError, match="No space left"):
+        hf_download.snapshot_with_retry(repo_id="x")
+    assert len(hub.calls) == 1
+
+
+def test_a_download_timeout_is_configured_before_the_hub_loads() -> None:
+    """huggingface_hub reads this at import time, so importing hf_download first
+    is what makes a hang become a timeout."""
+    import os
+
+    assert os.environ["HF_HUB_DOWNLOAD_TIMEOUT"]
+
+
+def test_other_http_errors_are_not_retried(hub) -> None:
+    """A 404 will never succeed on retry; failing immediately keeps the message."""
+    hub.outcomes.append(_HfHubHTTPError("404 Client Error: Not Found", _Response(404)))
+
+    with pytest.raises(_HfHubHTTPError, match="404"):
+        hf_download.snapshot_with_retry(repo_id="x")
+    assert len(hub.calls) == 1
+
+
+def test_persistent_rate_limiting_says_to_set_a_token(hub) -> None:
+    hub.outcomes.extend(
+        _HfHubHTTPError("429 Too Many Requests", _Response(429))
+        for _ in range(hf_download.MAX_ATTEMPTS)
+    )
+
+    with pytest.raises(RuntimeError, match="HF_TOKEN"):
+        hf_download.snapshot_with_retry(repo_id="x")
+    assert len(hub.calls) == hf_download.MAX_ATTEMPTS
+
+
+def test_retry_after_header_is_honoured() -> None:
+    error = _HfHubHTTPError("429", _Response(429, retry_after="30"))
+
+    assert hf_download._retry_delay(error, attempt=0) == pytest.approx(31.0)
+
+
+def test_backoff_grows_and_is_capped() -> None:
+    error = _HfHubHTTPError("429", _Response(429))
+
+    first = hf_download._retry_delay(error, attempt=0)
+    later = hf_download._retry_delay(error, attempt=1)
+
+    assert first < later
+    assert hf_download._retry_delay(error, attempt=10) <= hf_download.MAX_RETRY_SECONDS
+
+
+def test_verified_download_repairs_files_the_snapshot_skipped(hub, tmp_path) -> None:
+    """snapshot_download returned normally while leaving files out, and the
+    conversion only found out 28 minutes later on the first missing video."""
+    wanted = ["data/a.parquet", "videos/front/a.mp4", "videos/wrist/a.mp4"]
+
+    def snapshot(**kwargs):
+        # Everything except the wrist video, as the rate-limited run produced.
+        for name in wanted[:-1]:
+            path = tmp_path / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"x")
+        return str(tmp_path)
+
+    fetched: list[str] = []
+
+    def hf_hub_download(**kwargs):
+        name = kwargs["filename"]
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        fetched.append(name)
+        return str(path)
+
+    sys.modules["huggingface_hub"].snapshot_download = snapshot
+    sys.modules["huggingface_hub"].hf_hub_download = hf_hub_download
+
+    result = hf_download.download_files_verified(
+        repo_id="x", repo_type="dataset", revision="rev",
+        local_dir=tmp_path, relative_paths=wanted,
+    )
+
+    assert fetched == ["videos/wrist/a.mp4"]
+    assert result["repaired_files"] == ["videos/wrist/a.mp4"]
+    assert result["verified"] is True
+
+
+def test_verified_download_fails_when_a_file_never_arrives(hub, tmp_path) -> None:
+    wanted = ["data/a.parquet", "videos/wrist/a.mp4"]
+
+    def snapshot(**kwargs):
+        path = tmp_path / wanted[0]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        return str(tmp_path)
+
+    sys.modules["huggingface_hub"].snapshot_download = snapshot
+    sys.modules["huggingface_hub"].hf_hub_download = lambda **kwargs: str(tmp_path)
+
+    with pytest.raises(RuntimeError, match="could not be downloaded"):
+        hf_download.download_files_verified(
+            repo_id="x", repo_type="dataset", revision="rev",
+            local_dir=tmp_path, relative_paths=wanted, repair_attempts=2,
+        )
+
+
+def _stub_whoami(hub, result, error: Exception | None = None) -> None:
+    class _Api:
+        def whoami(self, token=None):
+            if error is not None:
+                raise error
+            return result
+
+    hub.module.HfApi = _Api
+
+
+def test_bulk_download_without_a_token_stops_before_downloading(
+    hub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Anonymous access cannot finish 2,400 files, and the failure mode is a
+    silent stall, so refuse rather than start."""
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+
+    with pytest.raises(SystemExit, match="HF_TOKEN"):
+        hf_download.require_token_for_bulk(2400)
+
+
+def test_a_small_download_still_works_anonymously(
+    hub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 9-file mini profile should not need a token."""
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+
+    status = hf_download.require_token_for_bulk(9)
+    assert status["configured"] is False
+
+
+def test_an_override_allows_anonymous_bulk(hub, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("ALLOW_ANONYMOUS_DOWNLOAD", "1")
+
+    assert hf_download.require_token_for_bulk(2400)["configured"] is False
+
+
+def test_a_rejected_token_is_caught_before_the_download(
+    hub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A revoked token is worse than none: the Hub retries internally and the
+    download goes quiet instead of failing."""
+    _stub_whoami(hub, None, error=_HfHubHTTPError("401 Unauthorized", _Response(401)))
+
+    with pytest.raises(SystemExit, match="rejected it"):
+        hf_download.require_token_for_bulk(2400)
+
+
+def test_an_accepted_token_reports_the_user(hub, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_whoami(hub, {"name": "someone"})
+
+    status = hf_download.require_token_for_bulk(2400)
+    assert status == {"configured": True, "valid": True, "user": "someone"}
+
+
+def test_missing_files_lists_only_absent_paths(tmp_path) -> None:
+    (tmp_path / "present.txt").write_bytes(b"x")
+
+    assert hf_download.missing_files(tmp_path, ["present.txt", "absent.txt"]) == ["absent.txt"]
+
+
+@pytest.mark.parametrize(
+    "variable", ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"]
+)
+def test_either_token_variable_counts_as_configured(
+    monkeypatch: pytest.MonkeyPatch, variable: str
+) -> None:
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+    assert hf_download.token_is_configured() is False
+
+    monkeypatch.setenv(variable, "value")
+    assert hf_download.token_is_configured() is True

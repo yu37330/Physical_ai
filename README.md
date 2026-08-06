@@ -16,6 +16,8 @@ PARC2026予選に向けたVLAモデル開発、Google Colab学習、Google Drive
 
 ## ドキュメント
 
+- [公式ルール（一次情報の整理）](docs/OFFICIAL_RULES.md)
+- [提出成立性 実測結果](docs/SUBMISSION_VIABILITY_RESULTS.md)
 - [VS Code + Colab拡張機能での実行](docs/VSCODE_COLAB_WORKFLOW.md)
 - [GPU実行前の準備状況](docs/PRE_GPU_READINESS.md)
 - [GPU実行前の実装ステータス](docs/PRE_GPU_IMPLEMENTATION_STATUS.md)

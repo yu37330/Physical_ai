@@ -13,8 +13,12 @@ def main() -> None:
     parser.add_argument("--format", choices=("lerobot_v2_1", "lerobot_v3"), required=True)
     args = parser.parse_args()
 
+    # Imported first: it sets HF_HUB_DOWNLOAD_TIMEOUT, which huggingface_hub only
+    # reads at its own import time.
+    from .hf_download import snapshot_with_retry
+
     try:
-        from huggingface_hub import HfApi, snapshot_download
+        from huggingface_hub import HfApi
     except ImportError as exc:
         raise SystemExit("Install huggingface_hub to download dataset metadata") from exc
 
@@ -27,7 +31,7 @@ def main() -> None:
     api = HfApi()
     info = api.dataset_info(args.repo_id, revision=args.revision, files_metadata=False)
     resolved_revision = info.sha
-    local = snapshot_download(
+    local = snapshot_with_retry(
         repo_id=args.repo_id,
         repo_type="dataset",
         revision=resolved_revision,

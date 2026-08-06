@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import sys
+
+# Import as package members, the way `python -m src.data.<name>` does. Putting
+# src/data on sys.path instead let bare sibling imports pass here while failing
+# on the real command line.
+from src.data.build_dataset_manifest import build_manifest
+from src.data.inspect_lerobot_metadata import build_inventory
+from src.data.libero_taxonomy import load_suite_map
+from src.data.select_balanced_episodes import select
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src" / "data"))
-
-from build_dataset_manifest import build_manifest
-from inspect_lerobot_metadata import build_inventory
-from libero_taxonomy import load_suite_map
-from select_balanced_episodes import select
 
 
 def _make_meta(tmp_path: Path, suite_map_path: Path) -> Path:
