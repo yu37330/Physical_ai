@@ -20,6 +20,7 @@ WRAPPERS = [
     "colab_pipeline.sh",
     "colab_run_detached.sh",
     "colab_transfer_submission.sh",
+    "colab_patch_submission.sh",
 ]
 
 def _find_bash() -> str | None:
@@ -188,6 +189,7 @@ def test_notebooks_delegate_to_the_same_wrappers() -> None:
         "02_dataset_prepare.ipynb": "colab_dataset_prepare.sh",
         "03_stage_a_train.ipynb": "colab_stage_a.sh",
         "04_submission_validate.ipynb": "colab_submission_validate.sh",
+        "07_patch_submission_requirements.ipynb": "colab_patch_submission.sh",
     }
     for notebook, wrapper in expected.items():
         payload = json.loads((REPO_ROOT / "notebooks" / notebook).read_text(encoding="utf-8"))
@@ -196,6 +198,33 @@ def test_notebooks_delegate_to_the_same_wrappers() -> None:
         )
         assert wrapper in sources, f"{notebook} no longer calls {wrapper}"
         assert (SCRIPTS / wrapper).is_file()
+
+
+def test_patch_submission_refuses_a_missing_archive(colab_env: dict[str, str]) -> None:
+    """Naming the wrong archive must fail before anything copies 14GB."""
+    completed = _run("colab_patch_submission.sh", [], colab_env)
+    assert completed.returncode == 1
+    assert "Submission archive not found" in completed.stderr
+
+
+def test_patch_submission_refuses_requirements_without_the_pin(
+    tmp_path: Path, colab_env: dict[str, str]
+) -> None:
+    """Patching an archive with a requirements.txt that still lacks the pin would
+    produce an archive that fails exactly as the last submission did. The whole
+    point of the run is that pin, so its absence is not something to discover
+    after a 14GB upload."""
+    archive = tmp_path / "drive/60_submissions/parc2026_track1_openvla_oft_plus.zip"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"not really a zip")
+    stale = tmp_path / "requirements.txt"
+    stale.write_text("torch==2.2.0\n", encoding="utf-8")
+
+    completed = _run(
+        "colab_patch_submission.sh", [], {**colab_env, "REQUIREMENTS": stale.as_posix()}
+    )
+    assert completed.returncode == 1
+    assert "nvidia-nvjitlink-cu12" in completed.stderr
 
 
 def test_detached_runner_rejects_a_missing_wrapper(colab_env: dict[str, str]) -> None:

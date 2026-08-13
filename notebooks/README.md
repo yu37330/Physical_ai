@@ -15,6 +15,9 @@ VS Codeの公式Colab拡張機能とColab Terminalを使う手順は[VS Code + C
 | `04_submission_validate.ipynb` | `colab_submission_validate.sh` | 提出依存検査、ZIP、SHA256、運営Validator |
 | `05_agent_cockpit.ipynb` | — | Gradio UI（Dataset Explorer、推論、Agent、自律Replay） |
 | `06_gpu_libero_validation.ipynb` | `run_colab_gpu_validation.py` | 実Checkpoint GPU Gate、任意でLIBERO因果閉ループ1 Trial |
+| `07_patch_submission_requirements.ipynb` | `colab_patch_submission.sh` | 既存の提出ZIP内の`requirements.txt`だけを差し替え、運営Validatorで再検査 |
+
+`07`は通常の実行順には入りません。重みは正しいまま依存だけを直したい場合に使います。組み立てからやり直す`04`と違い、Base重みの再取得もCheckpointの再組み立ても不要です。
 
 ## 無料T4での事前スモーク
 
