@@ -1,16 +1,36 @@
 # PyPI packages only. Do not add git/http/local-path dependencies.
 #
-# The scoring kit installs this file into its own interpreter
-# (validate_submission.py runs `sys.executable -m pip install -r requirements.txt`),
-# and that interpreter already has `torch==2.11.0+cpu` from the kit's setup.sh.
-# Without an explicit pin the 7B policy would therefore run on CPU and blow the
-# 10s per-request limit. The scoring environment is Python 3.10 on Ubuntu 22.04
-# with a single NVIDIA L4 24GB.
+# Scoring installs this file into a submission-only venv built with
+# `--system-site-packages`, on an image based on nvidia/cuda:13.0.3 that already
+# carries `torch==2.11.0+cu130`. Anything left out of this file is served by the
+# image's copy; anything pinned here wins inside the venv. Without an explicit
+# pin the 7B policy would run on the image's torch, which is not the version
+# OpenVLA-OFT was validated against. Python is 3.10, the GPU an NVIDIA L4 24GB.
 #
 # --index-url and --extra-index-url are rejected by the validator, so the CUDA
 # build has to come from plain PyPI, where the linux x86_64 `torch` wheel is
 # already CUDA-enabled. 2.2.0 matches the version OpenVLA-OFT trains against.
 torch==2.2.0
+# Required, and easy to lose. torch 2.2.0 pins each nvidia-*-cu12 wheel with
+# `==`, so none of them can be satisfied by the image's CUDA 13 copies and all
+# land in the venv -- except this one, which torch never names. It is reached
+# only through nvidia-cusparse-cu12, whose own metadata requests it with no
+# version at all. The image has a CUDA 12 copy of it (pulled in by the baked-in
+# pi0.5/openpi `jax[cuda12]`), which is visible through --system-site-packages
+# and satisfies that unversioned request, so pip installs nothing.
+#
+# That is fatal rather than merely untidy: libcusparse.so.12 carries
+# RUNPATH `$ORIGIN:$ORIGIN/../../nvjitlink/lib`, which resolves inside the venv's
+# own site-packages, and torch 2.2.0's _load_global_deps() preloads cublas,
+# cudnn, nvrtc, cudart, cupti, cufft, curand, cusolver, cusparse, nccl and nvtx
+# but not nvjitlink. The image's copy is therefore never reachable and
+# `import torch` dies with:
+#
+#   ImportError: libnvJitLink.so.12: cannot open shared object file
+#
+# An exact pin is what forces it into the venv; `>=` would be satisfied by the
+# image again. 12.1.105 is the CUDA 12.1 release, matching torch 2.2.0's others.
+nvidia-nvjitlink-cu12==12.1.105
 fastapi>=0.68
 uvicorn>=0.15
 msgpack>=1.0
