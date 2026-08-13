@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""提出ZIP内の`requirements.txt`だけを差し替え、別名のZIPを書き出す。
+"""提出ZIP内のコードだけを差し替え、別名のZIPを書き出す。
 
-重みは変わらないのに依存だけを直したい場合、`build_submission_zip.py`で作り直すには
-Base重みの再取得とCheckpointの再組み立てが要る。ここは既にあるArchiveを読み、
-1エントリだけ差し替えて書き出す。
+重みは正しいのに依存や起動処理だけを直したい場合、`build_submission_zip.py`で作り
+直すにはBase重みの再取得とCheckpointの再組み立てが要る。ここは既にあるArchiveを
+読み、`--sync-dir`配下のファイルだけを差し替えて書き出す。
 
     python scripts/patch_submission_zip.py \\
       --input  /content/drive/MyDrive/PARC2026/60_submissions/parc2026_track1.zip \\
       --output /content/work/submission/parc2026_track1_patched.zip \\
-      --requirements submission/openvla_oft_offline/requirements.txt
+      --sync-dir submission/openvla_oft_offline
+
+`model_weights/`と`prismatic/`には触れない。前者は14GBの重み、後者はColabで
+`prepare_vendor.sh`が用意するVendorコードで、どちらもRepoには無い。
 
 入力は読むだけで変更しない。差し替えに失敗しても元のArchiveが提出可能な状態で残る。
 """
@@ -23,8 +26,15 @@ import sys
 import zipfile
 from pathlib import Path
 
-TARGET_NAME = "requirements.txt"
+REQUIREMENTS_NAME = "requirements.txt"
 COPY_BUFFER = 16 * 1024 * 1024
+
+# Archive側にしか存在しないもの。重みとVendorコードはRepoから同期できないので、
+# 「Repoに無いから消す」の対象にも「差し替える」の対象にもしない。
+UNTOUCHED_ROOTS = ("model_weights", "prismatic")
+# build_submission_zip.py と同じ除外。Repo側に紛れていてもArchiveへ持ち込まない。
+EXCLUDED_PARTS = {".git", "__pycache__", ".pytest_cache", ".ipynb_checkpoints", "lora_adapter"}
+EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".zip"}
 
 
 def sha256(path: Path) -> str:
@@ -35,28 +45,45 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def find_requirements_entry(names: list[str]) -> str:
+def find_prefix(names: list[str]) -> str:
     """運営Validatorと同じ2つのレイアウトを許す。
 
     `validate_submission.py`の`_find_root_prefix`は、ルート直下と、単一フォルダで
-    包んだ`<top>/`の両方を受け付ける。どちらで作られたArchiveでも同じように直せる
-    ように、ここも同じ2つだけを候補にする。深い階層の同名ファイルは、提出物が
-    読む`requirements.txt`ではないので候補にしない。
+    包んだ`<top>/`の両方を受け付ける。どちらで作られたArchiveでも直せるように、
+    `requirements.txt`の位置から接頭辞を決める。
     """
     candidates = [
         name
         for name in names
-        if name == TARGET_NAME
-        or (name.count("/") == 1 and name.endswith(f"/{TARGET_NAME}"))
+        if name == REQUIREMENTS_NAME
+        or (name.count("/") == 1 and name.endswith(f"/{REQUIREMENTS_NAME}"))
     ]
     if not candidates:
         raise SystemExit(
-            f"No {TARGET_NAME} at the archive root or under a single top folder.\n"
+            f"No {REQUIREMENTS_NAME} at the archive root or under a single top folder.\n"
             "Check the archive with: unzip -l <zip> | grep requirements.txt"
         )
     if len(candidates) > 1:
-        raise SystemExit(f"Ambiguous {TARGET_NAME} entries: {candidates}")
-    return candidates[0]
+        raise SystemExit(f"Ambiguous {REQUIREMENTS_NAME} entries: {candidates}")
+    only = candidates[0]
+    return only[: -len(REQUIREMENTS_NAME)]
+
+
+def collect_sources(sync_dir: Path, prefix: str) -> dict[str, Path]:
+    """Archiveのエントリ名 -> Repo上のファイル。"""
+    sources: dict[str, Path] = {}
+    for path in sorted(sync_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(sync_dir)
+        if relative.parts[0] in UNTOUCHED_ROOTS:
+            continue
+        if any(part in EXCLUDED_PARTS for part in relative.parts):
+            continue
+        if path.suffix in EXCLUDED_SUFFIXES:
+            continue
+        sources[prefix + relative.as_posix()] = path
+    return sources
 
 
 def _entry_for_writing(info: zipfile.ZipInfo) -> zipfile.ZipInfo:
@@ -65,7 +92,7 @@ def _entry_for_writing(info: zipfile.ZipInfo) -> zipfile.ZipInfo:
     元のZipInfoをそのまま渡すと`flag_bits`（data descriptorや暗号化のビット）まで
     引き継ぎ、CRCとサイズを書き直す今回の経路と食い違う。`compress_type`は必ず
     引き継ぐ。重みは`build_submission_zip.py`がZIP_STOREDで格納しており、
-    ここでDEFLATEDに変えると展開後40GB制限とは別に、書き出しが数十分に伸びる。
+    ここでDEFLATEDに変えると書き出しが数十分に伸びる。
     """
     entry = zipfile.ZipInfo(info.filename, date_time=info.date_time)
     entry.compress_type = info.compress_type
@@ -81,27 +108,35 @@ def _entry_for_writing(info: zipfile.ZipInfo) -> zipfile.ZipInfo:
     return entry
 
 
+def _new_entry(name: str, template: zipfile.ZipInfo | None) -> zipfile.ZipInfo:
+    """Archiveに無かったファイル用のEntry。既存のコードEntryに見た目を揃える。"""
+    entry = zipfile.ZipInfo(name, date_time=template.date_time if template else (1980, 1, 1, 0, 0, 0))
+    entry.compress_type = zipfile.ZIP_DEFLATED
+    entry.external_attr = template.external_attr if template else (0o644 << 16)
+    entry.create_system = 3
+    return entry
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--requirements", type=Path, required=True)
+    parser.add_argument("--sync-dir", type=Path, required=True)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
 
     source = args.input.resolve()
     output = args.output.resolve()
-    requirements = args.requirements.resolve()
+    sync_dir = args.sync_dir.resolve()
 
     if not source.is_file():
         raise SystemExit(f"Submission archive not found: {source}")
-    if not requirements.is_file():
-        raise SystemExit(f"Replacement requirements.txt not found: {requirements}")
+    if not sync_dir.is_dir():
+        raise SystemExit(f"Sync directory not found: {sync_dir}")
     # 元のArchiveが唯一の提出可能な現物であることがある。上書きは許さない。
     if output == source:
         raise SystemExit("--output must differ from --input; the original is the fallback")
 
-    payload = requirements.read_bytes()
     source_bytes = source.stat().st_size
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -119,15 +154,24 @@ def main() -> None:
             f"{free_bytes / 1024**3:.1f} GiB free at {output.parent}."
         )
 
+    replaced: list[str] = []
+    added: list[str] = []
     try:
         with zipfile.ZipFile(source, "r") as original:
-            target = find_requirements_entry(original.namelist())
+            names = original.namelist()
+            prefix = find_prefix(names)
+            sources = collect_sources(sync_dir, prefix)
             infos = original.infolist()
+            code_template = next(
+                (info for info in infos if info.filename in sources), None
+            )
             with zipfile.ZipFile(output, "w", allowZip64=True) as patched:
                 for info in infos:
                     entry = _entry_for_writing(info)
-                    if info.filename == target:
-                        patched.writestr(entry, payload)
+                    replacement = sources.get(info.filename)
+                    if replacement is not None and not info.is_dir():
+                        patched.writestr(entry, replacement.read_bytes())
+                        replaced.append(info.filename)
                         continue
                     if info.is_dir():
                         patched.writestr(entry, b"")
@@ -136,6 +180,11 @@ def main() -> None:
                     # 実質ファイルコピーになる。
                     with original.open(info, "r") as reader, patched.open(entry, "w") as writer:
                         shutil.copyfileobj(reader, writer, COPY_BUFFER)
+                # Repoにあって元Archiveに無かったファイル。今回の`cuda_preload.py`の
+                # ように、修正が新しいModuleとして入る場合に要る。
+                for name in sorted(set(sources) - set(names)):
+                    patched.writestr(_new_entry(name, code_template), sources[name].read_bytes())
+                    added.append(name)
     except BaseException:
         # 書き損じたArchiveは、ちょうど埋まったディスクの上の死荷重にしかならない。
         # OSErrorに限らない。zipfileはZIP64が要る場面をRuntimeErrorで知らせるし、
@@ -143,23 +192,29 @@ def main() -> None:
         output.unlink(missing_ok=True)
         raise
 
+    requirements_entry = prefix + REQUIREMENTS_NAME
     with zipfile.ZipFile(output, "r") as verify:
-        written = verify.read(target)
         entries = len(verify.namelist())
-    if written != payload:
+        for name in replaced + added:
+            if verify.read(name) != sources[name].read_bytes():
+                output.unlink(missing_ok=True)
+                raise SystemExit(f"Patched archive did not keep the new {name}")
+    if requirements_entry not in replaced:
         output.unlink(missing_ok=True)
-        raise SystemExit(f"Patched archive did not keep the new {target}")
+        raise SystemExit(f"{requirements_entry} was not replaced; is --sync-dir correct?")
 
     report = {
         "input": str(source),
         "output": str(output),
-        "replaced_entry": target,
+        "sync_dir": str(sync_dir),
+        "prefix": prefix,
+        "replaced": replaced,
+        "added": added,
         "entries": entries,
         "source_entries": len(infos),
         "input_bytes": source_bytes,
         "zip_bytes": output.stat().st_size,
         "zip_gib": output.stat().st_size / 1024**3,
-        "requirements_source": str(requirements),
         "input_sha256": sha256(source),
         # build_submission_zip.py と同じキー名。Drive へ記録を残す側が両方を
         # 同じように読めるようにしておく。

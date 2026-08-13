@@ -29,7 +29,8 @@ SOURCE_ZIP="${SOURCE_ZIP:-$DRIVE_SUBMISSIONS/$ARCHIVE_NAME}"
 # and the easiest way to end up with a truncated 14GB file.
 PATCHED_NAME="${PATCHED_NAME:-${ARCHIVE_NAME%.zip}_patched.zip}"
 OUTPUT_ZIP="${OUTPUT_ZIP:-$SUBMISSION_BUILD_ROOT/$PATCHED_NAME}"
-REQUIREMENTS="${REQUIREMENTS:-$PROJECT_ROOT/submission/openvla_oft_offline/requirements.txt}"
+SUBMISSION_SOURCE="${SUBMISSION_SOURCE:-$PROJECT_ROOT/submission/openvla_oft_offline}"
+REQUIREMENTS="${REQUIREMENTS:-$SUBMISSION_SOURCE/requirements.txt}"
 
 colab::require_drive
 
@@ -57,10 +58,42 @@ cat "$REQUIREMENTS"
 
 colab::section "Patching $ARCHIVE_NAME"
 mkdir -p "$SUBMISSION_BUILD_ROOT"
+# The whole submission directory, not just requirements.txt: the nvjitlink fix
+# also arrives as runtime/cuda_preload.py, which the archive has never had.
+# model_weights/ and prismatic/ are left alone by the script -- the 14GB of
+# weights and the Colab-vendored Prismatic are not in the repo to sync from.
 python scripts/patch_submission_zip.py \
   --input "$SOURCE_ZIP" \
   --output "$OUTPUT_ZIP" \
-  --requirements "$REQUIREMENTS"
+  --sync-dir "$SUBMISSION_SOURCE"
+
+# The two things the fix consists of, read back out of the archive that is about
+# to be uploaded. A patch that silently synced neither would still pass the
+# official static check, and the next signal would be another scored run.
+colab::section "Fix present in the patched archive"
+python - "$OUTPUT_ZIP" <<'PY'
+import sys, zipfile
+
+archive = zipfile.ZipFile(sys.argv[1])
+names = archive.namelist()
+prefix = next(n for n in names if n.endswith("requirements.txt") and n.count("/") <= 1)
+prefix = prefix[: -len("requirements.txt")]
+
+requirements = archive.read(prefix + "requirements.txt").decode("utf-8")
+if "nvidia-nvjitlink-cu12==" not in requirements:
+    raise SystemExit("requirements.txt in the archive has no pinned nvidia-nvjitlink-cu12")
+print("requirements.txt: nvidia-nvjitlink-cu12 pinned")
+
+preload = prefix + "runtime/cuda_preload.py"
+if preload not in names:
+    raise SystemExit(f"{preload} is missing from the archive")
+print(f"{preload}: present")
+
+env = archive.read(prefix + "runtime/offline_env.py").decode("utf-8")
+if "preload_nvjitlink" not in env:
+    raise SystemExit("runtime/offline_env.py does not call preload_nvjitlink")
+print("runtime/offline_env.py: calls preload_nvjitlink")
+PY
 
 colab::section "Official validator"
 bash scripts/fetch_official_repo.sh "$OFFICIAL_REPO_ROOT"
