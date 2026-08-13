@@ -72,6 +72,12 @@ def _entry_for_writing(info: zipfile.ZipInfo) -> zipfile.ZipInfo:
     entry.external_attr = info.external_attr
     entry.internal_attr = info.internal_attr
     entry.create_system = info.create_system
+    # `file_size`も必ず写す。zipfileは書き込み前のZipInfoが申告するサイズだけを見て
+    # ZIP64拡張を書くかどうかを決めるため、既定の0のままだと4GB超のEntryが
+    # `RuntimeError: File size too large, try using force_zip64` で落ちる。
+    # 7B Checkpointのshardは4GBを超える。close()が実測値で書き直すので、ここでの
+    # 値はZIP64の判断にだけ効く。
+    entry.file_size = info.file_size
     return entry
 
 
@@ -99,6 +105,11 @@ def main() -> None:
     source_bytes = source.stat().st_size
     output.parent.mkdir(parents=True, exist_ok=True)
 
+    # 空き容量を見る前に消す。どうせ上書きするので、既にある分は「要る空き」ではなく
+    # 「使える空き」。失敗した前回の書きかけを残したまま数えると、実際には入るのに
+    # 足りないと言って止まる。
+    output.unlink(missing_ok=True)
+
     # 途中でディスクが尽きると、中途半端なArchiveが残った空きを占める。始める前に言う。
     free_bytes = shutil.disk_usage(output.parent).free
     if free_bytes < source_bytes + 1024**3:
@@ -125,8 +136,10 @@ def main() -> None:
                     # 実質ファイルコピーになる。
                     with original.open(info, "r") as reader, patched.open(entry, "w") as writer:
                         shutil.copyfileobj(reader, writer, COPY_BUFFER)
-    except OSError:
+    except BaseException:
         # 書き損じたArchiveは、ちょうど埋まったディスクの上の死荷重にしかならない。
+        # OSErrorに限らない。zipfileはZIP64が要る場面をRuntimeErrorで知らせるし、
+        # 14GBの書き出しはCtrl-Cされる余地も十分にある。どの経路でも残さない。
         output.unlink(missing_ok=True)
         raise
 

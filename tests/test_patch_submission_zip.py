@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -161,6 +162,85 @@ def test_a_deeply_nested_requirements_is_not_mistaken_for_the_real_one(
         ]
     )
     assert completed.returncode != 0
+
+
+def _load_module():
+    spec = importlib.util.spec_from_file_location("patch_submission_zip", SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_entries_past_the_zip64_threshold_are_written(
+    tmp_path: Path, replacement: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 7B checkpoint shard is well past 4GB.
+
+    zipfile decides whether to write the ZIP64 extension from the size the
+    ZipInfo declares *before* the data is written, so an entry built without
+    `file_size` aborts with "File size too large, try using force_zip64" -- and
+    only once it reaches the first oversized member, which on a real submission
+    is several minutes into a 14GB copy. Driving the threshold down reproduces
+    that on bytes a test can afford.
+    """
+    monkeypatch.setattr(zipfile, "ZIP64_LIMIT", 64)
+    source = tmp_path / "submission.zip"
+    output = tmp_path / "submission_patched.zip"
+    _build_archive(source)
+    assert source.stat().st_size > 64
+
+    module = _load_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT),
+            "--input",
+            str(source),
+            "--output",
+            str(output),
+            "--requirements",
+            str(replacement),
+        ],
+    )
+    module.main()
+
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read("model.safetensors") == WEIGHT_BYTES
+        assert archive.read("requirements.txt").decode() == FIXED_REQUIREMENTS
+
+
+def test_a_failed_patch_leaves_no_partial_archive(
+    tmp_path: Path, replacement: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """14GB of half-written archive is dead weight on the disk that has to hold
+    the next attempt."""
+    source = tmp_path / "submission.zip"
+    output = tmp_path / "submission_patched.zip"
+    _build_archive(source)
+
+    module = _load_module()
+    monkeypatch.setattr(
+        module.shutil, "copyfileobj", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT),
+            "--input",
+            str(source),
+            "--output",
+            str(output),
+            "--requirements",
+            str(replacement),
+        ],
+    )
+    with pytest.raises(RuntimeError):
+        module.main()
+
+    assert not output.exists()
 
 
 def test_the_report_records_both_hashes(tmp_path: Path, replacement: Path) -> None:
