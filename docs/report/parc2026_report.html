@@ -80,7 +80,12 @@
 
 <h2>3. 学習・推論時の工夫点および試行錯誤</h2>
 
-<h3>3.1 学習より先に「提出が成立するか」を実測した</h3>
+<h3>3.1 モデル選定</h3>
+<p>方針は「<b>評価条件に近い環境ですでに強い事前学習済み VLA を選び、その素の性能を壊さない範囲で、競技要件を満たす最小限の独自学習だけを行う</b>」とした。限られた計算資源で 7B 級を全面学習しても元のロバスト性を落とすだけになると判断したためである。候補は OpenVLA-OFT+ 7B（本命）、MolmoAct2 5B、X-VLA 0.9B、SmolVLA 0.5B（緊急提出用）の 4 系統を並行して維持した。</p>
+<p>OpenVLA-OFT+ を第一候補としたのは次の理由による。① 本競技と同じ <b>LIBERO-plus で直接評価された公開モデル</b>であり、公開比較表の総合値 79.6 が最上位であること。② 公開 example に近い条件（Light 94.9 / Background 93.9）で高い値を示すこと。③ 2 カメラ・proprioception・連続 Action chunk という構成が本競技の入出力仕様とそのまま噛み合うこと。④ 推論 VRAM 約 16 GB・checkpoint 約 15.9 GB で、提出時の L4 24 GB と ZIP 20 GB の制約に収まる見込みが立つこと。</p>
+<p>ただし<b>公開ベンチマークだけでは採用を確定させず</b>、L4 での安定動作・応答時間・ZIP サイズ・独自学習の実行可否・学習後のロバスト性維持の 5 点を実測してから確定する、という手順にした。次節がその実測である。</p>
+
+<h3>3.2 学習より先に「提出が成立するか」を実測した</h3>
 <p>採点環境と同じ L4 GPU 上で、素の Base 重みだけを使い提出制約を先に測った。学習に時間を投じる前に 7B が制約内で動くことを確認する狙いで、この判断は正しかった。</p>
 <table>
   <tr><th>Gate</th><th>実測</th><th>上限</th><th>余裕</th></tr>
@@ -92,30 +97,30 @@
 </table>
 <p class="note">Action chunk により実推論は 8 step に 1 回で、残りはバッファ取り出しのみ。予選ルールも「チャンク 1 回分の推論 ≤ 10 秒」を実質制約としており、この構成と整合する。</p>
 
-<h3>3.2 fork 依存の解消（推論の再現性）</h3>
+<h3>3.3 fork 依存の解消（推論の再現性）</h3>
 <p>OpenVLA-OFT は並列デコードのために transformers の fork を要求するが、提出環境では PyPI 版しか導入できない。<code>LlamaSdpaAttention</code> の因果マスクを padding のみの双方向マスクへ差し替えるパッチを PyPI 4.40.1 に当て、同一 checkpoint・同一入力に対する fork 版と patch 版の Action を照合して <b>max_abs_diff = 0.0（ビット一致）</b> を確認した。Peak VRAM も両者一致。</p>
 
-<h3>3.3 データ整備で踏んだ問題</h3>
+<h3>3.4 データ整備で踏んだ問題</h3>
 <ul>
   <li><b>AV1 動画のデコード</b>：OpenCV は LIBERO-plus の AV1 動画のフレーム数を 0 と返し、<b>例外を出さずに空のデータセットを生成</b>する。PyAV（libdav1d）へ切り替えて解消した。「失敗しない失敗」だったため発見が遅れた。</li>
   <li><b>Hugging Face の 429</b>：2,400 ファイルのダウンロードはトークン無しでは完走せず、<code>huggingface_hub</code> が内部リトライを行うため<b>失敗が「無言の停止」として現れる</b>。トークンを事前検証し、ダウンロード後に全ファイルの到着を照合して個別修復する実装に変更した。</li>
   <li><b>Colab のアイドル回収</b>：Colab はノートブックのカーネル実行を監視しており、ターミナルの活動は見ていない。長時間処理をターミナルで回して 90 分で複数回回収された。以後はセルから起動し、Discord へ完了通知を送る運用に変更した。</li>
 </ul>
 
-<h3>3.4 提出物の組み立てで間違えやすい 2 点</h3>
+<h3>3.5 提出物の組み立てで間違えやすい 2 点</h3>
 <ul>
   <li><b>Base 同梱 component の削除</b>：Base 重みには <code>action_head--150000</code> と <code>proprio_projector--150000</code> が同梱されている。残すと必要ファイルが「ちょうど 1 つ」の要件で落ちるうえ、公開重みをそのまま推論する構成にもなり規約違反となる。組み立て時に必ず除去する。</li>
   <li><b>統計ファイルの出所</b>：<code>dataset_statistics.json</code> は<b>学習 run のもの</b>を使う。Action Head は学習したデータセットの正規化に対して出力するため、Base の統計で逆正規化すると全 Action がずれる。</li>
 </ul>
 
-<h3>3.5 採点環境固有の failure（提出後に判明し、修正した）</h3>
+<h3>3.6 採点環境固有の failure（提出後に判明し、修正した）</h3>
 <p>ローカル・Colab・運営配布キットのいずれでも再現しない失敗が 2 件あった。いずれも本番採点イメージ（CUDA 13.0 ベース、提出物専用 venv を <code>--system-site-packages</code> で作成）に固有である。</p>
 <ul>
   <li><b><code>ImportError: libnvJitLink.so.12</code></b>：CUDA 12 ビルドの torch 2.2.0 が引く <code>libcusparse.so.12</code> は <code>libnvJitLink.so.12</code> を必要とし、その RUNPATH は<b>同一 site-packages 内しか探索しない</b>。torch 2.2.0 の <code>_load_global_deps()</code> は 11 個の CUDA ライブラリを先読みするが nvjitlink は含まない（2.4 で追加）。<code>requirements.txt</code> への明示 pin だけでは wheel がどちら側に入るか制御できなかったため、<b>torch を import する前に当該ライブラリを <code>RTLD_GLOBAL</code> で先読みする</b>実装を追加して解決した。</li>
   <li><b><code>ModuleNotFoundError: draccus</code></b>：提出物が使うのは同梱 Prismatic の 6 モジュールのみだが、そのいずれに触れても親パッケージの <code>__init__.py</code> が学習・データ系（FSDP 戦略、RLDS データローダ）を連鎖的に読み込む。その連鎖は <code>dlimp</code> を要求し、これは git 依存のため提出物の <code>requirements.txt</code> には追加できない。<b>該当する 4 パッケージを <code>__init__.py</code> を実行しない形で <code>sys.modules</code> へ先置きし</b>、必要な下位モジュールのみを読み込む構成に変更した。</li>
 </ul>
 
-<h3>3.6 検証の穴を埋めた</h3>
+<h3>3.7 検証の穴を埋めた</h3>
 <p>運営 Validator の静的検査は必須ファイルと ZIP 構造を、<code>--pip-dry-run</code> は依存が解決できるかを検査するが、<b>解決した依存の上で提出物のコードが動くかは検査されない</b>。上記 2 件はいずれもそこに落ちた。提出前に、<code>--system-site-packages</code> の venv へ提出物自身の <code>requirements.txt</code> を導入し、ZIP から取り出した起動経路を実際に import する検証を追加した。両方の failure がこの検証で再現する。なお <code>rich</code> への依存は、logging の <code>dictConfig</code> 文字列経由で解決されるため import 文の静的解析では検出できず、この実 import 検証によって初めて判明した。</p>
 
 <h2>4. 権利関係</h2>
