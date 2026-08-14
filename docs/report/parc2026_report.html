@@ -1,0 +1,170 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PARC2026 予選レポート</title>
+<style>
+  @page { size: A4; margin: 10mm 11mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "IPAPGothic", "IPAGothic", sans-serif;
+    font-size: 7.5pt; line-height: 1.32; color: #111; margin: 0;
+  }
+  h1 { font-size: 13pt; margin: 0 0 1mm; letter-spacing: .02em; }
+  .sub { font-size: 7.4pt; color: #444; margin: 0 0 2.5mm; }
+  h2 {
+    font-size: 8.4pt; margin: 2.2mm 0 1mm; padding: 0 0 .6mm;
+    border-bottom: .5pt solid #333;
+  }
+  h3 { font-size: 7.8pt; margin: 1.4mm 0 .6mm; }
+  p, li { margin: 0 0 .9mm; }
+  ul { margin: 0 0 1mm; padding-left: 4.2mm; }
+  li { padding-left: .3mm; }
+  table { border-collapse: collapse; width: 100%; margin: 0 0 1.2mm; }
+  th, td { border: .4pt solid #bbb; padding: .6mm 1.2mm; vertical-align: top; text-align: left; }
+  th { background: #f0f0f0; font-weight: bold; white-space: nowrap; width: 27mm; }
+  td.k { background: #f7f7f7; white-space: nowrap; width: 30mm; }
+  code, .m { font-family: "DejaVu Sans Mono", monospace; font-size: 6.7pt; word-break: break-all; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4mm; }
+  .note { font-size: 6.9pt; color: #555; }
+  .fill { background: #fff3cd; padding: 0 .6mm; }
+  .pagebreak { break-before: page; }
+</style>
+
+<h1>PARC2026 予選レポート — Track 1</h1>
+<p class="sub">OpenVLA-OFT+ による Action Head / Proprio Projector の最小適応　|　提出者: yu37330　|　コード: github.com/yu37330/Physical_ai</p>
+
+<h2>1. モデル情報</h2>
+<table>
+  <tr><td class="k">モデル名・バージョン</td>
+      <td>PARC2026 Track1 提出モデル <code>openvla_oft_plus_libero_plus_mixdata</code> + Stage A 学習済み component（内部ID <code>stage_a_<span class="fill">S?</span>_head_proprio_<span class="fill">N</span></code>）</td></tr>
+  <tr><td class="k">ベースモデル名</td>
+      <td>OpenVLA-OFT+（OpenVLA-7B / Prismatic VLM 系、LLM backbone は Llama-2 7B）を LIBERO-plus mixdata で fine-tune 済みの公開重み</td></tr>
+  <tr><td class="k">ベース重みの入手元</td>
+      <td>Hugging Face Hub <code>Sylvest/openvla-7b-oft-finetuned-libero-plus-mixdata</code>（repo_type: model）</td></tr>
+  <tr><td class="k">重みの revision</td>
+      <td><code>a85655ec941bae6644c9fbdf62db02b9726d7cf5</code>（resolved commit hash。<code>model_source_manifest.json</code> に記録）</td></tr>
+  <tr><td class="k">提出物のハッシュ値</td>
+      <td>提出ZIP SHA256 <code class="fill">&lt;patched_submission_sha256.txt の値&gt;</code><br>
+          <span class="note">学習済み component の個別 SHA256 は提出物内 <code>model_weights/openvla_oft_plus/parc_submission_manifest.json</code> に記載</span></td></tr>
+  <tr><td class="k">Action chunk</td>
+      <td><b>あり / chunk 長 8</b>（<code>NUM_ACTIONS_CHUNK = 8</code>）。サーバー内でバッファし、バッファが空の <code>/act</code> のみ実推論を行う</td></tr>
+</table>
+
+<h3>モデル構成および推論方式</h3>
+<ul>
+  <li><b>入力</b>：Front / Wrist の2視点 RGB と 8 次元 proprio、言語指示。画像は 180° 回転 → Lanczos で 224×224 → 面積 90% の center crop → 224×224（公式 OpenVLA-OFT の TF 前処理を PIL で再現）。2視点の <code>pixel_values</code> を連結し <code>set_num_images_in_input(2)</code> で扱う。</li>
+  <li><b>Proprio</b>：学習 run の <code>dataset_statistics.json</code> の q01/q99 で [-1, 1] へ正規化し、ProprioProjector で LLM 埋め込み次元へ射影。四元数→axis-angle 変換は公式 <code>quat2axisangle</code> と同一実装。</li>
+  <li><b>Action デコード</b>：自己回帰のトークン生成ではなく、<b>L1RegressionActionHead による並列回帰</b>で (8, 7) の chunk を一括生成。Gripper 次元のみ公式 evaluator と同じ後処理（<code>2a−1</code> → 符号 → 反転）を適用。</li>
+  <li><b>双方向 Attention</b>：OpenVLA-OFT は transformers の fork を要求するが、採点環境には PyPI 版しか入らない。<code>LlamaSdpaAttention</code> に同等パッチを当てた <b>PyPI transformers 4.40.1</b> で動作させ、fork 本体との Action 一致（<code>max_abs_diff = 0.0</code>、ビット一致）を確認済み。</li>
+  <li><b>オフライン実行</b>：<code>HF_HUB_OFFLINE</code> / <code>TRANSFORMERS_OFFLINE</code> を有効化。<code>trust_remote_code</code> は使用せず、同梱した Prismatic 実装を Auto クラスへ明示登録して解決する。bfloat16 / SDPA / 単一 GPU。</li>
+</ul>
+
+<h2>2. 学習情報</h2>
+<table>
+  <tr><td class="k">使用した学習データ</td>
+      <td>LIBERO-plus（<code>Sylvest/libero_plus_lerobot</code> @ <code>22c57433fef692b5b9ecc0795344daac7fa867a5</code>）から選定した 800 エピソード。独自収集・生成データは不使用。LeRobot v2.1 → RLDS/TFDS へ自前変換し <code>parc_libero_plus_selected</code> として登録</td></tr>
+  <tr><td class="k">件数・タスク数・<br>エピソード数</td>
+      <td>800 エピソード（train 640 / validation 160）、40 タスク、4 suite（spatial / object / goal / long 各 200）、160 shard、12.89 GB。fps 20、robot Panda、画像 256×256×3、state 8 次元、action 7 次元</td></tr>
+  <tr><td class="k">エピソード選定</td>
+      <td>固定 seed <code>20260802</code> の 2 段選定：① エピソード長の分位で候補抽出 ② 初期状態の farthest-point sampling で多様性確保。固定リビジョン＋固定 seed で再現可能</td></tr>
+  <tr><td class="k">学習方法・区分</td>
+      <td><b>Full fine-tuning でも LoRA でもない</b>。Base VLA（Vision backbone・LLM backbone・Projector）を完全に freeze し、<b>Action Head と Proprio Projector のみを更新</b>する component fine-tuning</td></tr>
+  <tr><td class="k">学習対象パラメータ</td>
+      <td><code>L1RegressionActionHead</code> と <code>ProprioProjector</code>（合計約 355 MB）。LoRA adapter は生成せず、提出物にも含めない</td></tr>
+  <tr><td class="k">学習ステップ数</td>
+      <td><span class="fill">S1: 100 step ／ S2: 500 step のいずれか</span>（S1 = 100 step、S2 = S1 から継続して 500 step）</td></tr>
+  <tr><td class="k">主なハイパーパラメータ</td>
+      <td>optimizer 既定（OpenVLA-OFT <code>finetune.py</code>）、learning rate <code>1.0e-5</code>、batch size 1 × gradient accumulation 8（実効 8）、warmup 20 step（S2 は 50）、dtype bfloat16、image augmentation 有効、seed <code>20260802</code></td></tr>
+  <tr><td class="k">学習環境・所要</td>
+      <td>Google Colab / NVIDIA L4 22.5 GB。3.99 秒/step、S1 100 step で 6 分 36 秒。当初 A100 40GB を想定したが実測 peak 15.33 GiB で L4 に収まることを確認し変更</td></tr>
+</table>
+
+<h2>3. 学習・推論時の工夫点および試行錯誤</h2>
+
+<h3>3.1 学習より先に「提出が成立するか」を実測した</h3>
+<p>採点環境と同じ L4 GPU 上で、素の Base 重みだけを使い提出制約を先に測った。学習に時間を投じる前に 7B が制約内で動くことを確認する狙いで、この判断は正しかった。</p>
+<table>
+  <tr><th>Gate</th><th>実測</th><th>上限</th><th>余裕</th></tr>
+  <tr><td><code>/act</code> 最大（Base 重み・合成観測）</td><td>0.234 秒</td><td>10 秒</td><td>43 倍</td></tr>
+  <tr><td><code>/act</code> 最大（学習後・運営 Validator）</td><td>1.775 秒</td><td>10 秒</td><td>5.6 倍</td></tr>
+  <tr><td>Peak VRAM</td><td>15.33 GiB</td><td>22.49 GiB</td><td>7.2 GiB</td></tr>
+  <tr><td>サーバー起動時間</td><td>47.6 秒</td><td>120 秒</td><td>2.5 倍</td></tr>
+  <tr><td>提出 ZIP サイズ</td><td>14.39 GiB</td><td>20 GB</td><td>—</td></tr>
+</table>
+<p class="note">Action chunk により実推論は 8 step に 1 回で、残りはバッファ取り出しのみ。予選ルールも「チャンク 1 回分の推論 ≤ 10 秒」を実質制約としており、この構成と整合する。</p>
+
+<h3>3.2 fork 依存の解消（推論の再現性）</h3>
+<p>OpenVLA-OFT は並列デコードのために transformers の fork を要求するが、提出環境では PyPI 版しか導入できない。<code>LlamaSdpaAttention</code> の因果マスクを padding のみの双方向マスクへ差し替えるパッチを PyPI 4.40.1 に当て、同一 checkpoint・同一入力に対する fork 版と patch 版の Action を照合して <b>max_abs_diff = 0.0（ビット一致）</b> を確認した。Peak VRAM も両者一致。</p>
+
+<h3>3.3 データ整備で踏んだ問題</h3>
+<ul>
+  <li><b>AV1 動画のデコード</b>：OpenCV は LIBERO-plus の AV1 動画のフレーム数を 0 と返し、<b>例外を出さずに空のデータセットを生成</b>する。PyAV（libdav1d）へ切り替えて解消した。「失敗しない失敗」だったため発見が遅れた。</li>
+  <li><b>Hugging Face の 429</b>：2,400 ファイルのダウンロードはトークン無しでは完走せず、<code>huggingface_hub</code> が内部リトライを行うため<b>失敗が「無言の停止」として現れる</b>。トークンを事前検証し、ダウンロード後に全ファイルの到着を照合して個別修復する実装に変更した。</li>
+  <li><b>Colab のアイドル回収</b>：Colab はノートブックのカーネル実行を監視しており、ターミナルの活動は見ていない。長時間処理をターミナルで回して 90 分で複数回回収された。以後はセルから起動し、Discord へ完了通知を送る運用に変更した。</li>
+</ul>
+
+<h3>3.4 提出物の組み立てで間違えやすい 2 点</h3>
+<ul>
+  <li><b>Base 同梱 component の削除</b>：Base 重みには <code>action_head--150000</code> と <code>proprio_projector--150000</code> が同梱されている。残すと必要ファイルが「ちょうど 1 つ」の要件で落ちるうえ、公開重みをそのまま推論する構成にもなり規約違反となる。組み立て時に必ず除去する。</li>
+  <li><b>統計ファイルの出所</b>：<code>dataset_statistics.json</code> は<b>学習 run のもの</b>を使う。Action Head は学習したデータセットの正規化に対して出力するため、Base の統計で逆正規化すると全 Action がずれる。</li>
+</ul>
+
+<h3>3.5 採点環境固有の failure（提出後に判明し、修正した）</h3>
+<p>ローカル・Colab・運営配布キットのいずれでも再現しない失敗が 2 件あった。いずれも本番採点イメージ（CUDA 13.0 ベース、提出物専用 venv を <code>--system-site-packages</code> で作成）に固有である。</p>
+<ul>
+  <li><b><code>ImportError: libnvJitLink.so.12</code></b>：CUDA 12 ビルドの torch 2.2.0 が引く <code>libcusparse.so.12</code> は <code>libnvJitLink.so.12</code> を必要とし、その RUNPATH は<b>同一 site-packages 内しか探索しない</b>。torch 2.2.0 の <code>_load_global_deps()</code> は 11 個の CUDA ライブラリを先読みするが nvjitlink は含まない（2.4 で追加）。<code>requirements.txt</code> への明示 pin だけでは wheel がどちら側に入るか制御できなかったため、<b>torch を import する前に当該ライブラリを <code>RTLD_GLOBAL</code> で先読みする</b>実装を追加して解決した。</li>
+  <li><b><code>ModuleNotFoundError: draccus</code></b>：提出物が使うのは同梱 Prismatic の 6 モジュールのみだが、そのいずれに触れても親パッケージの <code>__init__.py</code> が学習・データ系（FSDP 戦略、RLDS データローダ）を連鎖的に読み込む。その連鎖は <code>dlimp</code> を要求し、これは git 依存のため提出物の <code>requirements.txt</code> には追加できない。<b>該当する 4 パッケージを <code>__init__.py</code> を実行しない形で <code>sys.modules</code> へ先置きし</b>、必要な下位モジュールのみを読み込む構成に変更した。</li>
+</ul>
+
+<h3>3.6 検証の穴を埋めた</h3>
+<p>運営 Validator の静的検査は必須ファイルと ZIP 構造を、<code>--pip-dry-run</code> は依存が解決できるかを検査するが、<b>解決した依存の上で提出物のコードが動くかは検査されない</b>。上記 2 件はいずれもそこに落ちた。提出前に、<code>--system-site-packages</code> の venv へ提出物自身の <code>requirements.txt</code> を導入し、ZIP から取り出した起動経路を実際に import する検証を追加した。両方の failure がこの検証で再現する。なお <code>rich</code> への依存は、logging の <code>dictConfig</code> 文字列経由で解決されるため import 文の静的解析では検出できず、この実 import 検証によって初めて判明した。</p>
+
+<h2>4. 権利関係</h2>
+<div class="two">
+<div>
+<h3>ベースモデル</h3>
+<table>
+  <tr><td class="k">重み</td><td><code>Sylvest/openvla-7b-oft-finetuned-libero-plus-mixdata</code><br><b>MIT</b>（Hugging Face model card metadata に記載）</td></tr>
+  <tr><td class="k">上流</td><td>OpenVLA-7B / Prismatic VLM。LLM backbone は Llama-2 7B に由来するため、Meta Llama 2 Community License の条件も併せて適用されると理解している</td></tr>
+</table>
+<h3>学習データ</h3>
+<table>
+  <tr><td class="k">LIBERO-plus</td><td><code>Sylvest/libero_plus_lerobot</code> @ <code>22c57433</code>　<b>MIT</b>（dataset card metadata）</td></tr>
+</table>
+<p class="note">独自に収集・生成したデータは使用していない。公式評価の観測・seed・非公開タスク情報は学習に一切使用していない。</p>
+</div>
+<div>
+<h3>提出物に含まれる第三者コード</h3>
+<table>
+  <tr><td class="k">同梱ソース</td><td><code>prismatic</code> パッケージ（moojink/openvla-oft @ <code>e4287e94</code>）<br><b>MIT License</b> © 2025 Moo Jin Kim, Chelsea Finn, Percy Liang（LICENSE を <code>OPENVLA_OFT_LICENSE</code> として同梱）</td></tr>
+</table>
+<p class="note" style="margin-top:1.5mm">以下は <code>requirements.txt</code> 経由で採点環境が導入するもので、提出物にバイナリは同梱していない（上流の宣言ライセンス）。</p>
+<div id="deps-anchor"></div>
+<table>
+  <tr><td class="k">BSD</td><td>torch 2.2.0 / torchvision 0.17.0 / numpy 1.26.4 / uvicorn / networkx / sympy</td></tr>
+  <tr><td class="k">Apache-2.0</td><td>transformers 4.40.1 / tokenizers 0.19.1 / timm 0.9.10 / peft 0.11.1 / accelerate / diffusers 0.30.3 / huggingface_hub / safetensors / sentencepiece 0.2.0 / msgpack</td></tr>
+  <tr><td class="k">MIT 系</td><td>einops / triton / fastapi / draccus 0.8.0 / rich / filelock / Pillow（MIT-CMU）</td></tr>
+  <tr><td class="k">NVIDIA</td><td><code>nvidia-*-cu12</code> 各 wheel（NVIDIA proprietary / CUDA EULA。再配布はせず採点環境が PyPI から取得する）</td></tr>
+</table>
+</div>
+</div>
+
+<h2>5. 再現性</h2>
+<div class="two">
+<div>
+<p>外部から取得するものはすべてリビジョンを固定し、生成物ごとに manifest を残している。学習・変換・組み立ては固定 Commit を checkout した Colab から同一 Script で再実行できる。</p>
+<table>
+  <tr><td class="k">ベース重み</td><td><code>Sylvest/openvla-7b-oft-finetuned-libero-plus-mixdata</code> @ <code>a85655ec</code></td></tr>
+  <tr><td class="k">学習データ</td><td><code>Sylvest/libero_plus_lerobot</code> @ <code>22c57433</code></td></tr>
+  <tr><td class="k">同梱コード</td><td><code>moojink/openvla-oft</code> @ <code>e4287e94</code></td></tr>
+  <tr><td class="k">運営環境</td><td><code>matsuolab/PARC2026_pre</code> @ <code>fcac6269</code></td></tr>
+  <tr><td class="k">選定 seed</td><td><code>20260802</code>（エピソード選定・学習の双方）</td></tr>
+</table>
+</div>
+<div>
+<table>
+  <tr><td class="k">残す manifest</td><td><code>dataset_manifest.json</code>（データセット）、<code>run_manifest.json</code>（実験）、<code>checkpoint_manifest.json</code>（モデル）、<code>parc_submission_manifest.json</code>（提出物の組み立て記録：ベース revision、学習済み component の SHA256、統計ファイルの出所）</td></tr>
+  <tr><td class="k">自動検証</td><td>GitHub Actions で 3 Job（単体・契約テスト、Gradio ビルド、合成 RLDS の E2E）。実 GPU・実 Checkpoint・公式 LIBERO を要する Gate は Colab で実行</td></tr>
+</table>
+<p class="note">本レポートの数値は <code>docs/SUBMISSION_VIABILITY_RESULTS.md</code> に記録した実測値である。スコアそのものは、提出物の起動が通っていない段階では取得できていない。</p>
+</div>
+</div>
