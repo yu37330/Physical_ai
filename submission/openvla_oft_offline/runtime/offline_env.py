@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from .cuda_preload import preload_nvjitlink
+from .prismatic_bootstrap import install_lightweight_packages
 
 
 def configure_offline_environment() -> None:
@@ -15,3 +16,5 @@ def configure_offline_environment() -> None:
     # 読み込まれるのはこの後のtransformers importなので、ここが唯一の確実な位置。
     # 理由はcuda_preload.pyを参照。
     preload_nvjitlink()
+    # `prismatic`のどのモジュールに触るより先。理由はprismatic_bootstrap.pyを参照。
+    install_lightweight_packages()

@@ -59,6 +59,25 @@ tokenizers==0.19.1
 timm==0.9.10
 peft==0.11.1
 accelerate>=0.25.0,<1.0
+# The vendored prismatic tree brings its own dependencies, and the Colab
+# environment hides that: it installs the whole OpenVLA-OFT set, so the vendor
+# only looks self-contained there. Versions are the ones openvla-oft pins at
+# e4287e94.
+#
+# diffusers is required: prismatic.models.action_heads imports it, and that
+# module holds the L1RegressionActionHead the submission loads.
+diffusers==0.30.3
+# draccus and rich are not reached once runtime/prismatic_bootstrap.py keeps the
+# heavy __init__ chains from running -- verified by importing the real vendored
+# tree with both uninstalled. They stay because the only paths proven here are
+# the ones reachable without a GPU; a lazy import inside predict_action would
+# otherwise surface as a failed /act mid-scoring rather than at startup. Both
+# are small and pure Python.
+draccus==0.8.0
+rich
+# Pulled in by timm and reached directly by prismatic.extern.hf.processing_prismatic.
+# 0.17.0 is the build that matches torch 2.2.0, and openvla-oft pins it too.
+torchvision==0.17.0
 # 0.1.99 ships wheels only up to cp311. The scoring image is Python 3.10 so it
 # would install there, but it cannot build on the 3.12 Colab runtime used to
 # measure this package. 0.2.0 has wheels for both, and matches what

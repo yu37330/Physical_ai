@@ -84,15 +84,16 @@ if "nvidia-nvjitlink-cu12==" not in requirements:
     raise SystemExit("requirements.txt in the archive has no pinned nvidia-nvjitlink-cu12")
 print("requirements.txt: nvidia-nvjitlink-cu12 pinned")
 
-preload = prefix + "runtime/cuda_preload.py"
-if preload not in names:
-    raise SystemExit(f"{preload} is missing from the archive")
-print(f"{preload}: present")
+for module in ("runtime/cuda_preload.py", "runtime/prismatic_bootstrap.py"):
+    if prefix + module not in names:
+        raise SystemExit(f"{prefix + module} is missing from the archive")
+    print(f"{module}: present")
 
 env = archive.read(prefix + "runtime/offline_env.py").decode("utf-8")
-if "preload_nvjitlink" not in env:
-    raise SystemExit("runtime/offline_env.py does not call preload_nvjitlink")
-print("runtime/offline_env.py: calls preload_nvjitlink")
+for call in ("preload_nvjitlink", "install_lightweight_packages"):
+    if call not in env:
+        raise SystemExit(f"runtime/offline_env.py does not call {call}")
+    print(f"runtime/offline_env.py: calls {call}")
 PY
 
 colab::section "Official validator"
@@ -107,6 +108,19 @@ echo "Official commit: $OFFICIAL_COMMIT"
 colab::section "Static validation (ZIP)"
 python "$OFFICIAL_REPO_ROOT/validate_submission.py" "$OUTPUT_ZIP" \
   --static --pip-dry-run --json
+
+# The check that was missing. Static validation looks at files and structure,
+# --pip-dry-run looks at whether the dependencies resolve, and neither looks at
+# whether the submission's code runs on what got resolved -- which is where both
+# scored failures happened. This installs the archive's own requirements.txt into
+# a --system-site-packages venv and imports the startup path out of the archive.
+# Costs about 3GB and five minutes, against a 14GB upload and a scoring round.
+if [[ "${VERIFY_IMPORTS:-1}" == "1" ]]; then
+  colab::section "Import check against the archive"
+  python scripts/verify_submission_imports.py --archive "$OUTPUT_ZIP"
+else
+  echo "VERIFY_IMPORTS=0: skipping the import check."
+fi
 
 colab::section "Copy the patched archive to Drive"
 zip_bytes=$(stat -c %s "$OUTPUT_ZIP")

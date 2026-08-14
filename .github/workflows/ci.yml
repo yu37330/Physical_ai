@@ -78,6 +78,8 @@ jobs:
             tests/test_rlds_batch_contract.py \
             tests/test_offline_runtime.py \
             tests/test_offline_runtime_registration.py \
+            tests/test_cuda_preload.py \
+            tests/test_prismatic_bootstrap.py \
             tests/test_action_parity_tools.py \
             tests/test_assemble_submission_checkpoint.py \
             tests/test_patch_submission_zip.py \
