@@ -33,3 +33,11 @@ chromium --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
 手元にChromiumが無ければ、ブラウザでHTMLを開いて Ctrl+P →「PDFに保存」でも同じ結果になります。用紙A4、余白「なし」、背景グラフィックを有効にしてください。
 
 **2ページに収まっているか毎回確認すること。** 加筆すると3ページ目が出ます。その場合は本文を削るか、`body` の `font-size` / `line-height` を詰めます。
+
+## タイトル
+
+Omnicampus のレポートフォームには「レポートのタイトル」欄があります。PDFのH1と揃えてください。
+
+```
+事前学習済みVLAを壊さない最小適応 ― OpenVLA-OFT+によるTrack 1提出
+```
