@@ -105,6 +105,39 @@ def extract_code(archive: Path, destination: Path) -> str:
     return prefix
 
 
+def create_venv(env_dir: Path) -> tuple[Path, list[str]]:
+    """`--system-site-packages`のvenvと、そこへインストールするpipコマンドを返す。
+
+    Colabのシステム Python 3.12 には`ensurepip`が入っておらず、`with_pip=True`は
+
+        CalledProcessError: ... '-m', 'ensurepip', '--upgrade', '--default-pip'
+
+    で落ちる。Debian系がpipの同梱をdistroパッケージへ切り出しているためで、
+    ここで直せる話ではない。pip自身を持たないvenvを作り、外側のpipに`--python`で
+    そこへ入れさせる。`--python`はpip 23.3以降にある。
+    """
+    python = env_dir / "bin" / "python"
+    try:
+        venv.EnvBuilder(with_pip=True, system_site_packages=True).create(env_dir)
+        return python, [str(python), "-m", "pip"]
+    except subprocess.CalledProcessError:
+        print("[check] no ensurepip; driving the venv from the outer pip", flush=True)
+        shutil.rmtree(env_dir, ignore_errors=True)
+        venv.EnvBuilder(with_pip=False, system_site_packages=True).create(env_dir)
+        probe = subprocess.run(
+            [sys.executable, "-m", "pip", "--python", str(python), "--version"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode != 0:
+            raise SystemExit(
+                "This interpreter's pip has neither ensurepip nor --python "
+                f"(needs pip 23.3+):\n{probe.stderr.strip()}"
+            )
+        # `--python`はサブコマンドより前でなければpipが受け付けない。
+        return python, [sys.executable, "-m", "pip", "--python", str(python)]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
@@ -136,12 +169,11 @@ def main() -> int:
         # wheelがvenv側とイメージ側へ分かれる状況そのものが再現しない。
         env_dir = workspace / "venv"
         print(f"[check] creating venv --system-site-packages at {env_dir}", flush=True)
-        venv.EnvBuilder(with_pip=True, system_site_packages=True).create(env_dir)
-        python = env_dir / "bin" / "python"
+        python, pip = create_venv(env_dir)
 
         print("[check] pip install -r requirements.txt", flush=True)
         install = subprocess.run(
-            [str(python), "-m", "pip", "install", "-r", str(requirements)],
+            [*pip, "install", "-r", str(requirements)],
             capture_output=True,
             text=True,
         )

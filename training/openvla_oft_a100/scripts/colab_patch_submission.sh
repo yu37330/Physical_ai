@@ -56,16 +56,30 @@ if ! grep -q '^nvidia-nvjitlink-cu12==' "$REQUIREMENTS"; then
 fi
 cat "$REQUIREMENTS"
 
-colab::section "Patching $ARCHIVE_NAME"
-mkdir -p "$SUBMISSION_BUILD_ROOT"
-# The whole submission directory, not just requirements.txt: the nvjitlink fix
-# also arrives as runtime/cuda_preload.py, which the archive has never had.
-# model_weights/ and prismatic/ are left alone by the script -- the 14GB of
-# weights and the Colab-vendored Prismatic are not in the repo to sync from.
-python scripts/patch_submission_zip.py \
-  --input "$SOURCE_ZIP" \
-  --output "$OUTPUT_ZIP" \
-  --sync-dir "$SUBMISSION_SOURCE"
+# Rewriting 14GB takes about ten minutes, and a run that got past the patch and
+# failed later -- in the import check, or copying to Drive -- has a finished
+# archive sitting there already. REUSE_OUTPUT=1 picks it up instead of building
+# the same bytes again. Only for a rerun in the same session: it cannot tell
+# which commit the existing archive was patched from, so the checks below are
+# what has to catch a stale one.
+if [[ "${REUSE_OUTPUT:-0}" == "1" && -f "$OUTPUT_ZIP" ]]; then
+  colab::section "Reusing the patched archive already on $SUBMISSION_BUILD_ROOT"
+  echo "$OUTPUT_ZIP"
+  # `|| true`: under `set -e` a failed test as the branch's last command ends
+  # the run, and a missing report is not a reason to stop.
+  [[ -f "$OUTPUT_ZIP.json" ]] && cat "$OUTPUT_ZIP.json" || true
+else
+  colab::section "Patching $ARCHIVE_NAME"
+  mkdir -p "$SUBMISSION_BUILD_ROOT"
+  # The whole submission directory, not just requirements.txt: the nvjitlink fix
+  # also arrives as runtime/cuda_preload.py, which the archive has never had.
+  # model_weights/ and prismatic/ are left alone by the script -- the 14GB of
+  # weights and the Colab-vendored Prismatic are not in the repo to sync from.
+  python scripts/patch_submission_zip.py \
+    --input "$SOURCE_ZIP" \
+    --output "$OUTPUT_ZIP" \
+    --sync-dir "$SUBMISSION_SOURCE"
+fi
 
 # The two things the fix consists of, read back out of the archive that is about
 # to be uploaded. A patch that silently synced neither would still pass the
